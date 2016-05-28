@@ -6,7 +6,7 @@
 # beta 0.4.5 | fix permisions
 # Add skip database if alredy exists
 # Cron still not working...
-# 15 abr 2016
+# 28 may 2016
 # Ask or report bugs on twitter @skamasle, mail: yo@skamasle.com
 # This script dont restore databases if you dont have one user asigned to database
 # This script dont work yet if your cPanel has database prefix disabled.
