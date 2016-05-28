@@ -3,7 +3,7 @@
 # skamasle.com | @skamasle
 # Run at your own risk
 # Import cPanel backup Into VestaCP
-# beta 0.4.3 | fix permisions
+# beta 0.4.5 | fix permisions
 # Add skip database if alredy exists
 # Cron still not working...
 # 15 abr 2016
@@ -61,7 +61,7 @@ if file $sk_file |grep -q -c "gzip compressed data, from Unix" ; then
 			exit 1
 		fi
 	else
-	echo "Error 3 not-gzip - no stantard cpanel backup provided"
+	echo "Error 3 not-gzip - no stantard cpanel backup provided of file not installed ( Try yum install file, or apt-get install file )"
 	rm -rf /root/$sk_tmp
 	exit 3
 fi
@@ -100,11 +100,25 @@ sk_real_cp_user=$(grep "user:" userdata/$main_domain1 | cut -d " " -f2)
 
 
 if /usr/local/vesta/bin/v-list-users | grep -q -w $sk_cp_user ;then
-	echo "User exists on VestaCP but I dont stop restore, in this beta I asume you create user manually"
+	echo "User alredy exist on your server, maybe on vestacp or in your /etc/passwd"
+	echo "**"
+	echo "Grep your /etc/password"
+	grep -q -w $sk_cp_user /etc/password
+	echo "**"
+	echo "Stop Working, clening..."
+	rm -rf /root/$sk_tmp
+	exit 21
 else
 	echo "Generate password aleatory password for $sk_cp_user and create Vestacp Account ..."
 	sk_password=$(gen_password)
 	/usr/local/vesta/bin/v-add-user $sk_cp_user $sk_password administrator@$main_domain1 $sk_vesta_package $sk_cp_user $sk_cp_user
+	if [ $? != 0 ]; then
+		tput setaf 2
+		echo "Stop Working... Cant create user...if is fresh install of vestacp try reboot or reopen session check bug https://bugs.vestacp.com/issues/138"
+		tput sgr0
+		rm -rf /root/$sk_tmp
+		exit 4
+		fi
 fi
 
 #########################
@@ -147,6 +161,7 @@ sed -i 's/GRANT/GRANDES/g' sk-database
 sed -i "s/\*.\*//g" sk-database
 sed -i 's/ \+/ /g' sk-database
 sed -i "s/\.\*//g" sk-database
+#sed -i 's/,//g' sk-database
 touch sk_mysql_import.sql
 mkdir $user_db_tmp
 mkdir $db_tmp
@@ -326,7 +341,7 @@ rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$sk_cp_user/w
        			 echo -en "Working: $sk_sync restored files\r"
     		done
 else
-rsync --exclude-from='exclude_path' homedir/public_html/ /home/$sk_cp_user/web/$main_domain1/public_html 
+rsync --exclude-from='exclude_path' homedir/public_html/ /home/$sk_cp_user/web/$main_domain1/public_html 2>&1
 fi
 chown $sk_cp_user:$sk_cp_user -R /home/$sk_cp_user/web/$main_domain1/public_html
 chmod 751 /home/$sk_cp_user/web/$main_domain1/public_html
@@ -351,7 +366,7 @@ if [[ "$sk_maild" != "cur" && "$sk_maild" != "new" && "$sk_maild" != "tmp"  ]]; 
 					v-add-mail-account $sk_cp_user $sk_maild $sk_mail_account $sk_mail_pass1
 					mv $sk_maild/$sk_mail_account /home/$sk_cp_user/mail/$sk_maild
 					chown $sk_cp_user:mail -R /home/$sk_cp_user/mail/$sk_maild
-					echo "$sk_mail_account@$sk_maild | $sk_mail_pass1"	>> /root/sk_mail_password_$DATE-$TIME 
+					echo "$sk_mail_account@$sk_maild | $sk_mail_pass1"	>> /root/sk_mail_password_$sk_cp_user-$DATE 
 		done
 	fi
 #else
@@ -398,6 +413,6 @@ rm -rf /root/$sk_tmp
 echo "##############################"
 echo "cPanel Backup restored"
 echo "Review your content and report any fail"
-echo "I reset mail password, cant restore yet shadow passwords to vesta format ( md5 )"
-echo "Check your new passwords runing: cat /root/sk_mail_password_$DATE-$TIME"
+echo "I reset mail password not posible restore it yet."
+echo "Check your new passwords runing: cat /root/sk_mail_password_$sk_cp_user-$DATE "
 echo "##############################"
