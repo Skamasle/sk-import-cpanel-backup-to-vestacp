@@ -1,6 +1,13 @@
 # sk-importer
 Import cPanel backup in vestacp
 
+Beta 0.5
+
+- Improve database restauration.
+- Just restore databases and vestacp rebuild users, this add compatibility to mysql 5.7 ( ubuntu 16+ )
+- Try restore SSL, something fail if backup not have CA
+- Some bugs fixed and some function added to test if have rsync and file installed
+
 Beta 0.4
 
 - Improve database restore, now is compatible whit more cPanel backups, fix some bugs when database dont have Grant ALL Privileges.
