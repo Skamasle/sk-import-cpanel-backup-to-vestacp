@@ -33,6 +33,7 @@ sk_vesta_package=default
 source /usr/local/vesta/func/main.sh 
 sk_file=$1
 sk_tmp=sk_tmp
+# I see than this is stupid, not know why is here.
 sk_file_name=$(ls $sk_file)
 tput setaf 2
 echo "Checking provided file..."
