@@ -203,8 +203,9 @@ function get_domain_path() {
 				rsync -av homedir/${path}/ /home/${sk_cp_user}/web/${sk_domain}/public_html 2>&1 | 
     			while read sk_file_dm; do
        			 	sk_sync=$((sk_sync+1))
-       			 	echo -en "Working: $sk_sync restored files\r"
+       			 	echo -en "-- $sk_sync restored files\r"
 				done
+			echo " "
 			else
 				rsync homedir/${path}/ /home/${sk_cp_user}/web/${sk_domain}/public_html
 			fi
@@ -228,8 +229,9 @@ if [ "$sk_debug" != 0 ]; then
 	rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/${sk_cp_user}/web/${main_domain1}/public_html 2>&1 | 
     		while read sk_file_dm; do
        			 sk_sync=$((sk_sync+1))
-       			 echo -en "Working: $sk_sync restored files\r"
-    		done
+       			 echo -en "-- $sk_sync restored files\r"
+			done
+		echo " "
 else
 	rsync --exclude-from='exclude_path' homedir/public_html/ /home/${sk_cp_user}/web/${main_domain1}/public_html 2>&1
 fi
