@@ -58,7 +58,7 @@ if file $sk_file |grep -q -c "gzip compressed data," ; then
 	fi
 		if [ $? -eq 0 ];then
 			tput setaf 2
-			echo "Backup extracted whitout errors..."
+			echo "Backup extracted without errors..."
 			tput sgr0 
 		else
 			echo "Error on backup extraction, check your file, try extract it manually"
@@ -124,9 +124,9 @@ else
 		fi
 fi
 
-### Start whit Databases
+### Start with Databases
 tput setaf 2
-echo "Start Whit Databases"
+echo "Start with Databases"
 tput sgr0 
 sed -i 's/\\//g' mysql.sql
 sed -i "s/\`/'/g" mysql.sql
@@ -157,9 +157,9 @@ do
 	grep -w $userdb user_password_db |while read user end_user_pass
 		do
 # default cpanel user has all database privileges
-# if you use default user in your config files to connect whit database
+# if you use default user in your config files to connect with database
 # you will need remove && [ "$userdb" != "$sk_cp_user" ] to restore main user, but
-# this will cause database duplication in db.conf and will interfer whit vestacp backups 
+# this will cause database duplication in db.conf and will interfer with vestacp backups 
 			if [ "$userdb" == "$user" ] && [ "$userdb" != "$sk_cp_user" ] && [ "$userdb" != "$sk_real_cp_user" ] ; then
 				echo "DB='$db' DBUSER='$userdb' MD5='$end_user_pass' HOST='localhost' TYPE='mysql' CHARSET='UTF8' U_DISK='0' SUSPENDED='no' TIME='$TIME' DATE='$DATE'" >> /usr/local/vesta/data/users/${sk_cp_user}/db.conf
 			fi
@@ -262,7 +262,7 @@ if [[ "$sk_maild" != "cur" && "$sk_maild" != "new" && "$sk_maild" != "tmp"  ]]; 
 	fi
 #else
 # this only detect default dirs account new, cur, tmp etc
-# maybe can do something whit this, but on most cpanel default account have only spam.
+# maybe can do something with this, but on most cpanel default account have only spam.
 fi
 done
 echo "All mail accounts restored"
