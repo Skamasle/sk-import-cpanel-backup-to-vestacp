@@ -292,12 +292,14 @@ echo "Old  cPanel password restored in $sk_cp_user vesta account"
 tput sgr0
 }
 function sk_fix_mx () {
-echo "Start Whit MX Records"
+tput setaf 2
+	echo "Start With MX Records"
+tput sgr0
 cd $sk_importer_in/dnszones
 for sk_mx in $sk_domains 
 do
 	if [ -e $sk_mx.db ]; then
-		sk_id=$(grep MX /usr/local/vesta/data/users/${sk_cp_user}/dns/${sk_mx}.conf	|tr "'" " " | cut -d " " -f 2)
+		sk_id=$(grep MX /usr/local/vesta/data/users/${sk_cp_user}/dns/${sk_mx}.conf |tr "'" " " | cut -d " " -f 2)
 		v-delete-dns-record $sk_cp_user $sk_mx $sk_id
 		
 		grep MX ${sk_mx}.db | while read domain tt i ns pri value
@@ -307,7 +309,7 @@ do
 						value=mail.$value
 					fi
 					v-add-dns-record $sk_cp_user $sk_mx @ MX $value $pri
-					if [ "$?" -eg "1" ]; then
+					if [[ "$?" -gt "1" ]]; then
 						v-add-dns-record $sk_cp_user $sk_mx @ MX mail.${sk_mx} 0
 					fi
 					echo "MX fixed in $sk_mx"
