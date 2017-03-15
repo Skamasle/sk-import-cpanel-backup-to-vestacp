@@ -2,7 +2,7 @@
 # Author: Maks Usmanov - Skamasle
 # SKamasle.com
 # cpanelimporter@skamasle.com | @skamasle in tw
-# Version 0.5.2 beta | Fixed duplicate database entry | Restore users
+# Version 0.5.3 beta | FiX USER PASS | GET MX
 # Run at your own risk
 # This script take cpanel full backup and import it in vestacp account
 # This script can import databases and database users and password, 
@@ -291,6 +291,33 @@ tput setaf 5
 echo "Old  cPanel password restored in $sk_cp_user vesta account"
 tput sgr0
 }
+function sk_fix_mx () {
+echo "Start Whit MX Records"
+cd $sk_importer_in/dnszones
+for sk_mx in $sk_domains 
+do
+	if [ -e $sk_mx.db ]; then
+		sk_id=$(grep MX /usr/local/vesta/data/users/${sk_cp_user}/dns/${sk_mx}.conf	|tr "'" " " | cut -d " " -f 2)
+		v-delete-dns-record $sk_cp_user $sk_mx $sk_id
+		
+		grep MX ${sk_mx}.db | while read domain tt i ns pri value
+			do
+				if [ $ns == "MX" ];then
+					if [ "$value" == "$sk_mx" ] || [ "$value" == "$sk_mx." ];then 
+						value=mail.$value
+					fi
+					v-add-dns-record $sk_cp_user $sk_mx @ MX $value $pri
+					if [ "$?" -eg "1" ]; then
+						v-add-dns-record $sk_cp_user $sk_mx @ MX mail.${sk_mx} 0
+					fi
+					echo "MX fixed in $sk_mx"
+				fi
+			done
+	fi	
+done
+}
+#experimental
+sk_fix_mx
 sk_restore_pass
 
 echo "Remove tmp files"
