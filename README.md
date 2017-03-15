@@ -1,6 +1,11 @@
 # sk-importer
 Import cPanel backup in vestacp
 
+Beta 0.5.3
+
+- Restore user password
+- Restore MX from cpanel dnszone
+
 Beta 0.5
 
 - Improve database restauration.
