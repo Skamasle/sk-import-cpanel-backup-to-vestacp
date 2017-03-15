@@ -2,7 +2,7 @@
 # Author: Maks Usmanov - Skamasle
 # SKamasle.com
 # cpanelimporter@skamasle.com | @skamasle in tw
-# Version 0.5.1 beta | Fixed duplicate database entry.
+# Version 0.5.2 beta | Fixed duplicate database entry | Restore users
 # Run at your own risk
 # This script take cpanel full backup and import it in vestacp account
 # This script can import databases and database users and password, 
@@ -98,10 +98,8 @@ else
 # get real cPanel user if no databases exist
 	sk_cp_user=$(grep "user:" userdata/${main_domain1} | cut -d " " -f2)
 fi
-# So get real user, may be we need it before
+# So get real user, may be we need it after -- oh yes, not remember where but this save my day march 19 2017 on 0.5
 sk_real_cp_user=$(grep "user:" userdata/${main_domain1} | cut -d " " -f2)
-
-
 if /usr/local/vesta/bin/v-list-users | grep -q -w $sk_cp_user ;then
 	echo "User alredy exist on your server, maybe on vestacp or in your /etc/passwd"
 	echo "**"
@@ -283,11 +281,25 @@ do
 		v-add-web-domain-ssl $sk_cp_user $ssl ${sk_importer_in}/sslcerts/	 
 	fi
 done
+function sk_restore_pass () {
+sk_actual_pass=$(grep -w "^$sk_cp_user:" /etc/shadow |tr ":" " " | awk '{ print  $2 }' )
+sk_new_pass=$(cat $sk_importer_in/shadow)
+# need replace I hope you have installed it as in most systems...  
+# sed is a hero but replace is easy and not need space // :D
+replace "$sk_cp_user:$sk_actual_pass" "$sk_cp_user:$sk_new_pass" -- /etc/shadow
+tput setaf 5
+echo "Old  cPanel password restored in $sk_cp_user vesta account"
+tput sgr0
+}
+sk_restore_pass
+
 echo "Remove tmp files"
 rm -rf "/root/${sk_tmp}"
+tput setaf 4
 echo "##############################"
 echo "cPanel Backup restored"
 echo "Review your content and report any fail"
 echo "I reset mail password not posible restore it yet."
 echo "Check your new passwords runing: cat /root/sk_mail_password_${sk_cp_user}-${sk_cod}"
 echo "##############################"
+tput sgr0
