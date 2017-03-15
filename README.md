@@ -35,9 +35,3 @@ Beta 0.3.5
 -  Restore mails if cPanel backup use dovecot
 -  Restore data bases
 -  Add file count to show user some progress when extract backup and restore domain files.
-
-Working in:
-- Cron restore
-- SSL Restore
-- Improve functions on mail restore.
-- Restore databases whitout prefix.
