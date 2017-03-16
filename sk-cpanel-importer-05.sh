@@ -308,7 +308,7 @@ do
 						value=mail.$value
 					fi
 					v-add-dns-record $sk_cp_user $sk_mx @ MX $value $pri
-					if [[ "$?" -gt "1" ]]; then
+					if [[ "$?" -ge "1" ]]; then
 						v-add-dns-record $sk_cp_user $sk_mx @ MX mail.${sk_mx} 0
 					fi
 					echo "MX fixed in $sk_mx"
