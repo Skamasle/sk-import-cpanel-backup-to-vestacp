@@ -318,8 +318,10 @@ do
 	fi	
 done
 }
-#experimental
-sk_fix_mx
+if [ "$2" == "MX" ];then
+# Need some fixed so run if you want try it, marked as experimental
+	sk_fix_mx
+fi
 sk_restore_pass
 
 echo "Remove tmp files"
