@@ -302,7 +302,7 @@ do
 		sk_id=$(grep MX /usr/local/vesta/data/users/${sk_cp_user}/dns/${sk_mx}.conf |tr "'" " " | cut -d " " -f 2)
 		v-delete-dns-record $sk_cp_user $sk_mx $sk_id
 		grep MX ${sk_mx}.db |  awk '{for(sk=NF;sk>=1;sk--) printf "%s ", $sk;print ""}' | while read value pri ns rest
-		do
+			do
 				if [ "$ns" == "MX" ];then
 					if [ "$value" == "$sk_mx" ] || [ "$value" == "$sk_mx." ];then 
 						value=mail.$value
@@ -313,7 +313,7 @@ do
 					fi
 					echo "MX fixed in $sk_mx"
 				fi
-		done
+			done
 	fi	
 done
 }
