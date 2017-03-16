@@ -35,3 +35,13 @@ Beta 0.3.5
 -  Restore mails if cPanel backup use dovecot
 -  Restore data bases
 -  Add file count to show user some progress when extract backup and restore domain files.
+
+RUN:
+
+bash sk-cpanel-importer-05.sh cpanel-backup.tar.gz
+
+or
+
+bash sk-cpanel-importer-05.sh cpanel-backup.tar.gz MX
+
+Second option will restore your MX, this help people who use google apps, office 365 or remote mail system
