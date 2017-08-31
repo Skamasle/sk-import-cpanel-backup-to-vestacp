@@ -18,7 +18,7 @@ if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ] ; then
 	echo "This script need: rsync, file"
 	echo "#######################################"
 	if  [ -e /etc/redhat-release ]; then
-		echo "Run: yum install rync file"
+		echo "Run: yum install rsync file"
 	else
 		echo "Run: apt-get install rsync file"
 	fi
