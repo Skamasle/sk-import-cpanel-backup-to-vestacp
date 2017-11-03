@@ -29,7 +29,7 @@ sk_debug=1
 sk_vesta_package=default
 #
 # Only for gen_password but I dont like it, a lot of lt
-# maybe will use it for orther functions :)
+# maybe will use it for other functions :)
 source /usr/local/vesta/func/main.sh 
 sk_file=$1
 sk_tmp=sk_tmp
@@ -174,7 +174,7 @@ tput sgr0
 
 skaddons=$(cat addons |cut -d "=" -f1)
 sed -i 's/_/./g; s/=/ /g' addons
-echo "Converting addons domains, subdomains and some orther fun"
+echo "Converting addons domains, subdomains and some other fun"
 cp sds sk_sds
 cp sds2 sk_sds2
 sed -i 's/_/./g' sk_sds
