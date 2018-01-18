@@ -270,15 +270,20 @@ echo "All mail accounts restored"
 tput setaf 2
 echo "Restoring SSL for domains"
 tput sgr0
-mv  ${sk_importer_in}/sslkeys/* ${sk_importer_in}/sslcerts/
-mv  ${sk_importer_in}/ssl/* ${sk_importer_in}/sslcerts/
-sk_domains=$(v-list-web-domains $sk_cp_user plain |awk '{ print  $1 }')
+if [ -d ${sk_importer_in}/sslkeys ]; then
+    mv  ${sk_importer_in}/sslkeys/* ${sk_importer_in}/sslcerts/
+    mv  ${sk_importer_in}/ssl/* ${sk_importer_in}/sslcerts/
+   else
+    echo "No SSL folders found"
+fi
+
+sk_domains=$(/usr/local/vesta/bin/v-list-web-domains $sk_cp_user plain |awk '{ print  $1 }')
 
 for ssl in $sk_domains
 do
 	if [ -e ${sk_importer_in}/sslcerts/${ssl}.key ]; then
 		echo "Found SSL for ${ssl}, restoring..."
-		v-add-web-domain-ssl $sk_cp_user $ssl ${sk_importer_in}/sslcerts/	 
+		/usr/local/vesta/bin/v-add-web-domain-ssl $sk_cp_user $ssl ${sk_importer_in}/sslcerts/
 	fi
 done
 function sk_restore_pass () {
