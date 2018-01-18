@@ -1,8 +1,7 @@
 #!/bin/bash
-# Author: Maks Usmanov - Skamasle
-# SKamasle.com
-# cpanelimporter@skamasle.com | @skamasle in tw
-# Version 0.5.3 beta | FiX USER PASS | GET MX
+# Author / Idea: Maks Usmanov - Skamasle and good people who help to improve: 
+# Thanks to https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors
+# Github: https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp
 # Run at your own risk
 # This script take cpanel full backup and import it in vestacp account
 # This script can import databases and database users and password, 
