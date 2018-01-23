@@ -193,7 +193,7 @@ function get_domain_path() {
 		while read sk_domain path
 	do
 		if [ -e userdata/${sk_domain} ];then
-			v-add-domain $sk_cp_user $sk_domain
+			/usr/local/vesta/bin/v-add-domain $sk_cp_user $sk_domain
 			echo "Restoring $sk_domain..."
 			rm -f /home/${sk_cp_user}/web/${sk_domain}/public_html/index.html
 			if [ "$sk_debug" != 0 ]; then
@@ -253,7 +253,7 @@ if [[ "$sk_maild" != "cur" && "$sk_maild" != "new" && "$sk_maild" != "tmp"  ]]; 
 					
 					echo "Create and restore mail account: $sk_mail_account@$sk_maild"
 					sk_mail_pass1=$(generate_password)		
-					v-add-mail-account $sk_cp_user $sk_maild $sk_mail_account $sk_mail_pass1
+					/usr/local/vesta/bin/v-add-mail-account $sk_cp_user $sk_maild $sk_mail_account $sk_mail_pass1
 					mv ${sk_maild}/${sk_mail_account} /home/${sk_cp_user}/mail/${sk_maild}
 					chown ${sk_cp_user}:mail -R /home/${sk_cp_user}/mail/${sk_maild}
 					echo "${sk_mail_account}@${sk_maild} | $sk_mail_pass1"	>> /root/sk_mail_password_${sk_cp_user}-${sk_cod}
