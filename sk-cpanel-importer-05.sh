@@ -11,6 +11,10 @@
 ###########
 # If you need restore main database user read line 160 or above
 ###########
+if [ $# -lt 1 ]; then
+    echo usage: bash sk-cpanel-importer-05.sh cpanel-backup.tar.gz
+    exit 1
+fi
 if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ] ; then
 	echo "#######################################"
 	echo "rsync not installed, try install it"
