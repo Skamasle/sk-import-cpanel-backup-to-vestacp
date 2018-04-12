@@ -12,7 +12,9 @@
 # If you need restore main database user read line 160 or above
 ###########
 if [ $# -lt 1 ]; then
-    echo usage: bash sk-cpanel-importer-05.sh cpanel-backup.tar.gz
+    echo "usage: bash $0 cpanel-backup.tar.gz"
+    echo "or"
+    echo "usage: bash $0 cpanel-backup.tar.gz MX"
     exit 1
 fi
 if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ] ; then
