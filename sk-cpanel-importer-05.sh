@@ -17,6 +17,9 @@ if [ $# -lt 1 ]; then
     echo "usage: bash $0 cpanel-backup.tar.gz MX"
     exit 1
 fi
+if [[ $PATH != *"/usr/local/vesta/bin"* ]];then
+    PATH=$PATH:/usr/local/vesta/bin
+fi
 if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ] ; then
 	echo "#######################################"
 	echo "rsync not installed, try install it"
@@ -128,6 +131,7 @@ else
 fi
 
 ### Start with Databases
+mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
 tput setaf 2
 echo "Start with Databases"
 tput sgr0 
