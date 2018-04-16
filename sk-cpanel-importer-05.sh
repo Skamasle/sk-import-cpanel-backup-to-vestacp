@@ -266,6 +266,7 @@ if [[ "$sk_maild" != "cur" && "$sk_maild" != "new" && "$sk_maild" != "tmp"  ]]; 
 					/usr/local/vesta/bin/v-add-mail-account $sk_cp_user $sk_maild $sk_mail_account $sk_mail_pass1
 					mv ${sk_maild}/${sk_mail_account} /home/${sk_cp_user}/mail/${sk_maild}
 					chown ${sk_cp_user}:mail -R /home/${sk_cp_user}/mail/${sk_maild}
+					find /home/${sk_cp_user}/mail/${sk_maild} -type f -name 'dovecot*' -delete
 					echo "${sk_mail_account}@${sk_maild} | $sk_mail_pass1"	>> /root/sk_mail_password_${sk_cp_user}-${sk_cod}
 		done
 	fi
