@@ -17,7 +17,8 @@ if [ $# -lt 1 ]; then
     echo "usage: bash $0 cpanel-backup.tar.gz MX"
     exit 1
 fi
-if [[ $PATH != *"/usr/local/vesta/bin"* ]];then
+if [[ $PATH != *"/usr/local/vesta/bin"* ]]; then
+    VESTA=/usr/local/vesta
     PATH=$PATH:/usr/local/vesta/bin
 fi
 if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ] ; then
@@ -266,6 +267,7 @@ if [[ "$sk_maild" != "cur" && "$sk_maild" != "new" && "$sk_maild" != "tmp"  ]]; 
 					/usr/local/vesta/bin/v-add-mail-account $sk_cp_user $sk_maild $sk_mail_account $sk_mail_pass1
 					mv ${sk_maild}/${sk_mail_account} /home/${sk_cp_user}/mail/${sk_maild}
 					chown ${sk_cp_user}:mail -R /home/${sk_cp_user}/mail/${sk_maild}
+					find /home/${sk_cp_user}/mail/${sk_maild} -type f -name 'dovecot*' -delete
 					echo "${sk_mail_account}@${sk_maild} | $sk_mail_pass1"	>> /root/sk_mail_password_${sk_cp_user}-${sk_cod}
 		done
 	fi
