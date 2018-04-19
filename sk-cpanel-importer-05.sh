@@ -19,7 +19,10 @@ if [ $# -lt 1 ]; then
 fi
 if [[ $PATH != *"/usr/local/vesta/bin"* ]]; then
     VESTA=/usr/local/vesta
+    export VESTA
+    
     PATH=$PATH:/usr/local/vesta/bin
+    export PATH
 fi
 if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ] ; then
 	echo "#######################################"
