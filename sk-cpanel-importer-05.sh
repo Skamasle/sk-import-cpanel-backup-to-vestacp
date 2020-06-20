@@ -11,6 +11,15 @@
 ###########
 # If you need restore main database user read line 160 or above
 ###########
+
+# Detect OS
+case $(head -n1 /etc/issue | cut -f 1 -d ' ') in
+    Debian)     linux_distro="debian" ;;
+    Ubuntu)     linux_distro="ubuntu" ;;
+    Amazon)     linux_distro="amazon" ;;
+    *)          linux_distro="rhel" ;;
+esac
+
 if [ $# -lt 1 ]; then
     echo "usage: bash $0 cpanel-backup.tar.gz"
     echo "or"
@@ -157,6 +166,9 @@ for sk_dbr in $sk_db_list
 		if [ $? == "1" ]; then
 			echo " Create and restore ${sk_dbr} "
 			mysql < mysql/${sk_dbr}.create
+			if [ "$linux_distro" = "debian" ]; then
+                            sed -i "s/utf8mb4_unicode_520_ci/utf8mb4_unicode_ci/g" mysql/${sk_dbr}.sql
+                        fi
 			mysql ${sk_dbr} < mysql/${sk_dbr}.sql
 		else
 			echo "Error: Cant restore database $sk_dbr alredy exists in mysql server"
