@@ -1,4 +1,7 @@
 # sk-importer
+v-restore-cpanel-v2 is a copy of https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
+Make some changes for testing, then make some pull request in oficial repo
+
 Import cPanel backup in vestacp
 
 Beta 0.5.3
