@@ -465,7 +465,7 @@ if [ -z "$2" ]; then
 fi
 OPTIONS=$(echo "${@:2}" | tr '[:lower:]' '[:upper:]')
 
-for OPTION in "$OPTIONS"; do
+for OPTION in $OPTIONS; do
     case "$OPTION" in
         "ALL")
             restore_databases 
