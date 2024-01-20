@@ -1,0 +1,502 @@
+#!/bin/bash
+# info: Import Cpanel backup to a new user
+# options: BACKUP [MX]
+#
+# example: v-import-cpanel /backup/backup.tar.gz yes
+#
+# Based on sk-import-cpanel-backup-to-vestacp
+# Credits: Maks Usmanov (skamasle) and contributors:
+# Thanks to <https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors>
+
+# Known issue
+# - Importing certificates fails at the moment. Due to format changes of CPanel side
+# - It doesn't update DKIM
+
+# shellcheck source=/usr/local/hestia/func/main.sh
+source $HESTIA/func/main.sh
+# shellcheck source=/etc/hestiacp/hestia.conf
+source /etc/hestiacp/hestia.conf
+# load config file
+source_conf "$HESTIA/conf/hestia.conf"
+GREEN=$(tput setaf 2)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+COLOROFF=$(tput sgr0)
+if [ $# -lt 1 ]; then
+	echo "usage: bash $0 cpanel-backup.tar.gz"
+	echo "or"
+	echo "usage: bash $0 cpanel-backup.tar.gz ALL # Default opción is ALL can be omited "
+	echo "usage: bash $0 cpanel-backup.tar.gz MAIL DB DOMAIN CRON MX"
+	exit 1
+fi
+
+if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ]; then
+	printf "%sWARNING:%s rsync not installed, try install it\n" "$YELLOW" "$COLOROFF"
+	printf "%sWARNING:%s This script need: rsync, file" "$YELLOW" "$COLOROFF"
+    printf "%sINFO:%s Run: apt-get install rsync file" "$GREEN" "$COLOROFF"
+	exit 3
+fi
+
+if [ -f "$1" ]; then
+	CPANEL_BACKUP="$1"
+fi
+if [ -n "$2" ]; then
+	mx="$2"
+fi
+if [ -z "$BACKUP_TEMP" ]; then
+	BACKUP_TEMP=$BACKUP
+else
+	printf "%sWARNING:%s File does not exists\n" "$YELLOW" "$COLOROFF"
+	exit 1
+fi
+
+# Creating temporary directory
+TMPDIR=$(mktemp -p "$BACKUP_TEMP" -d)
+printf "%sINFO:%s TMPDIR is %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
+
+cleanup_and_exit() {
+    EXIT_CODE=$1
+    printf "%sINFO:%s Exit and clean %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
+
+    if [ -d "$temp_dir" ]; then
+        rm -rf "$temp_dir"
+    fi
+    exit "$EXIT_CODE"
+}
+trap 'cleanup_and_exit $?' EXIT
+
+printf "%sINFO:%s Checking provided file...\n" "$GREEN" "$COLOROFF"
+
+if ! file "$CPANEL_BACKUP" | grep -q -c "gzip compressed data,"; then
+	printf "%sError 3 not-gzip - no stantard cpanel backup provided of file not installed ( Try yum install file, or apt-get install file )%s\n" "$RED" "$COLOROFF"
+	rm -rf "$TMPDIR"
+	exit 3
+fi
+
+printf "%sINFO:%s OK - Gziped File\n" "$GREEN" "$COLOROFF"
+
+printf "%sINFO:%s Extracting backup...\n" "$GREEN" "$COLOROFF"
+if tar xzf "$CPANEL_BACKUP" -C "$TMPDIR"; then
+	printf "%sINFO:%s Backup extracted without errors...\n" "$GREEN" "$COLOROFF"
+else
+	printf "%sERROR!! %s on backup extraction, check your file, try extract it manually\n"  "$RED" "$COLOROFF"
+	printf "%sINFO:%s Removing %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
+	rm -rf "$TMPDIR"
+	exit 1
+fi
+
+cd $TMPDIR/*
+
+MAIN_DIR=$(pwd)
+printf "%sINFO:%s Access tmp directory, working DIR is %s\n" "$GREEN" "$COLOROFF" "$MAIN_DIR"
+DBPREFIX=$(cat meta/dbprefix)
+if [[ $DBPREFIX == 1 ]]; then
+	printf "%sERROR:%s 255 - I dont like your prefix, I dont want do this job\n" "$RED" "$COLOROFF"
+	exit 255
+fi
+MAIN_DOMAIN1=$(grep main_domain userdata/main | cut -d " " -f2)
+NEW_USER=$(grep "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
+printf "%sINFO:%s Get User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+CHECK_SYSUSER=$(cut -f 1 -d : /etc/passwd | grep "^$NEW_USER$")
+if [ -n "$CHECK_SYSUSER" ] || [ -e "$HESTIA/data/users/$NEW_USER" ]; then
+	check_result "$E_EXISTS" "user $user exists"
+    printf "%sERROR:%s User allready exists\n"  "$RED" "$COLOROFF"
+	exit 2
+fi
+
+# Extract cPanel package name
+CPANEL_PACKAGE_NAME=$(cat ./cp/$NEW_USER | grep 'PLAN=' | cut -f2 -d'=')
+if /usr/local/hestia/bin/v-list-user-packages | grep -qw "$CPANEL_PACKAGE_NAME"; then
+	HESTIA_PACKAGE="$CPANEL_PACKAGE_NAME"
+	printf "%sINFO:%s Package %s will be used for the user %s.\n" "$YELLOW" "$COLOROFF" "$HESTIA_PACKAGE" "$GREEN" "$COLOROFF"
+else
+	HESTIA_PACKAGE="default" # Replace "default" with your default Hestia package name
+	printf "%sWARNING:%s Default package %s will be used for the user %s.\n" "$YELLOW" "$COLOROFF" "$HESTIA_PACKAGE" "$NEW_USER"
+fi
+
+# Create a new user
+tmp_passwd=$(generate_password)
+email=$(cat ./cp/$NEW_USER | grep CONTACTEMAIL= | cut -f2 -d'=')
+if [ -z "$email" ]; then
+	# Hestia does not like email to be set to an empty string
+	email="info@"$(hostname)
+fi
+$BIN/v-add-user "$NEW_USER" "$tmp_passwd" "$email" "$HESTIA_PACKAGE"
+if [ "$?" -ne 0 ]; then
+	printf "\n%sERROR%s: Unable to create user" "$GREEN" "$COLOROFF"
+	exit 1
+fi
+# Restore user password
+printf "\n%sINFO%s: Restoring user password.\n" "$GREEN" "$COLOROFF"
+update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
+$BIN/v-rebuild-user "$NEW_USER"
+restore_databases(){
+# Restore databases
+mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
+printf "\n%sINFO%s: Start with Databases\n" "$GREEN" "$COLOROFF"
+sed -i 's/\\//g' mysql.sql
+sed -i "s/\`/'/g" mysql.sql
+
+## User / Password
+grep "GRANT USAGE ON" mysql.sql | awk -F "'" '{ print $2, $6 }' | uniq > user_password_db
+# User and database
+grep "GRANT" mysql.sql | grep -v "USAGE ON" > u_db
+cat u_db | awk -F "'" '{ print $2, $4 }' | sort | uniq > uni_u_db
+sed -i "/$NEW_USER /d" user_password_db
+# Get database list
+db_list=$(grep -m 1 Database: mysql/*.create | awk '{ print  $5 }')
+# Fix mysql 8 to mariadb problems here:
+sed -i "s/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g" mysql/*
+mysql -e "SHOW DATABASES" > server_dbs
+for db in $db_list; do
+	grep -w $db server_dbs
+	if [ $? == "1" ]; then
+		printf "%sINFO%s: Create and restore %s\n" "$GREEN" "$COLOROFF" "${db}"
+		mysql < mysql/${db}.create
+		mysql ${db} < mysql/${db}.sql
+	else
+		printf "%sERROR%s: Cant restore database %s alredy exists in mysql server\n" "$RED" "$COLOROFF" $db 
+	fi
+done
+
+time=$(echo "$time_n_date" | cut -f 1 -d \ )
+date=$(echo "$time_n_date" | cut -f 2 -d \ )
+
+cat uni_u_db | while read db userdb; do
+	grep -w $userdb user_password_db | while read user end_user_pass; do
+		if [ "$userdb" == "$user" ] && [ "$userdb" != "$NEW_USER" ]; then
+			echo "DB='$db' DBUSER='$userdb' MD5='$end_user_pass' HOST='localhost' TYPE='mysql' CHARSET='UTF8' U_DISK='0' SUSPENDED='no' TIME='$time' DATE='$data'" >> /usr/local/hestia/data/users/$NEW_USER/db.conf
+		fi
+	done
+done
+
+# Leave hestia restore passwords and create users
+printf "%sINFO:%s Rebuild databases files for %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+$BIN/v-rebuild-databases $NEW_USER
+## end mysql
+}
+
+restore_domains(){
+printf "\n%sINFO:%s Start Restoring Domains\n" "$GREEN" "$COLOROFF"
+addon_domains=$(cat addons | cut -d "=" -f1)
+sed -i 's/_/./g; s/=/ /g' addons
+printf "%sINFO:%s Converting addons domains, subdomains and some other fun\n" "$GREEN" "$COLOROFF"
+cp sds hst_sds
+cp sds2 hst_sds2
+sed -i 's/_/./g' hst_sds
+cat addons | while read addon_domain addon_sub; do
+printf "%sINFO:%s Converting default subdomain: %s in domain: %s\n" "$GREEN" "$COLOROFF" "$addon_sub"  "$addon_domain"
+	sed -i -e "s/$addon_sub/$addon_domain/g" hst_sds
+	sed -i -e "s/$addon_sub/$addon_domain/g" hst_sds2
+	mv userdata/$addon_sub userdata/${addon_domain}
+	mv apache_tls/$addon_sub apache_tls/${addon_domain}
+done
+sed -i 's/public_html/public@html/g; s/_/./g; s/public@html/public_html/g; s/=/ /g' hst_sds2
+
+function get_domain_path() {
+	while read cp_domain path; do
+		printf "%sINFO:%s Import $cp_domain\n" "$GREEN" "$COLOROFF"
+		if [ -e userdata/$cp_domain ]; then
+			$BIN/v-add-domain "$NEW_USER" "$cp_domain"
+			if [ $? -ne 0 ]; then
+				check_result "1" "Unable to create domain it allready exists"
+			fi
+			rm -f /home/$NEW_USER/web/$cp_domain/public_html/index.html
+			rm -f /home/$NEW_USER/web/$cp_domain/public_html/robots.txt
+			sync_count=0
+			rsync -av homedir/$path/ /home/$NEW_USER/web/$cp_domain/public_html 2>&1 \
+				| while read file_dm; do
+					sync_count=$(($sync_count + 1))
+					echo -en "-- $sync_count restored files\r"
+				done
+			chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$cp_domain/public_html
+			chown $NEW_USER:www-data /home/$NEW_USER/web/$cp_domain/public_html
+			chmod 751 /home/$NEW_USER/web/$cp_domain/public_html
+			echo "$cp_domain" >> exclude_path
+		fi
+	done
+}
+get_domain_path < hst_sds2
+
+$BIN/v-add-domain $NEW_USER $MAIN_DOMAIN1
+
+if [ $? -ne 0 ]; then
+	check_result "1" "Unable to create domain it allready exists"
+fi
+
+# need it for restore main domain
+if [ ! -e exclude_path ]; then
+	touch exclude_path
+fi
+printf "%sINFO:%s Restore main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
+rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/index.html
+rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/robots.txt
+
+rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
+	| while read file_dm; do
+		sync_count=$(($sync_count + 1))
+		echo -en "-- $sync_count restored files\r"
+	done
+
+chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
+chown $NEW_USER:www-data /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
+chmod 751 /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
+
+####### Set Domain PHP version
+PHP_VERSION_LINE=$(grep -r "phpversion:" userdata/$MAIN_DOMAIN1)
+CPANEL_PHP_VERSION=${PHP_VERSION_LINE#*: }
+if [ -n "$CPANEL_PHP_VERSION" ]; then
+	CPANEL_PHP_VERSION=$(echo $CPANEL_PHP_VERSION | grep -oP '(?<=php)\d+')
+	HESTIA_PHP_VERSION="PHP-${CPANEL_PHP_VERSION:0:1}_${CPANEL_PHP_VERSION:1}"
+
+	if $BIN/v-list-web-templates-backend | grep -qw "$HESTIA_PHP_VERSION"; then
+		printf "\n%sINFO:%s Setting PHP version to %s for %s under user%s\n" "$GREEN" "$COLOROFF" "$HESTIA_PHP_VERSION"  "$MAIN_DOMAIN1"  "$NEW_USER"
+		$BIN/v-change-web-domain-backend-tpl $NEW_USER $MAIN_DOMAIN1 $HESTIA_PHP_VERSION
+		if [ $? -ne 0 ]; then
+			printf "%sERROR:%s Failed to set same PHP version for %s setting default, please check this to avoid errors.\n" "$RED" "$COLOROFF" $MAIN_DOMAIN1
+		else
+			printf "%sINFO:%s PHP version for %s set to %s\n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1" "$HESTIA_PHP_VERSION"
+		fi
+	else
+		printf "%sERROR:%s PHP version %s is not installed on HestiaCP.\n" "$RED" "$COLOROFF" $HESTIA_PHP_VERSION
+		printf "%sWARNING:%s Please install and set it to avoid errors in website.\n" "$YELLOW" "$COLOROFF"
+		printf "%sINFO:%s The restoration will continue but the website may not work as expected\n" "$GREEN" "$COLOROFF"
+	fi
+else
+	printf "%sWARNING:%s Unable to detect PHP version used on old server\n" "$YELLOW" "$COLOROFF"
+	printf "%sWARNING:%s Please check you old PHP version and set the PHP version in domain settings\n" "$YELLOW" "$COLOROFF"
+    printf "%sWARNING:%s The restoration will continue but the website may not work as expected\n" "$YELLOW" "$COLOROFF"
+
+fi
+
+# Parked domains
+if [ -s pds ]; then
+    cat pds | while read parked
+    do
+        printf "%sINFO:%s Procesing parked domain: %s\n" "$GREEN" "$COLOROFF" "$parked"
+        parkedfor=$(cat userdata/cache.json |  jq --arg domain "$parked" '.[$domain][3]' |sed 's/"//g')
+        $BIN/v-add-web-domain-alias $NEW_USER $parkedfor $parked
+    done
+else
+
+    printf "%sINFO:%sNo parked domains found\n" "$GREEN" "$COLOROFF"
+
+fi
+
+# Try SSL
+printf "%sINFO:%s Copy SSL files. \n" "$GREEN" "$COLOROFF"
+
+for SSL_DOMAIN in apache_tls/*
+do
+    DOMAIN=$(echo $SSL_DOMAIN | awk -F '/' '{ print $2 }')
+    mkdir -p apache_tls/ssl/$DOMAIN
+    awk -v RS="-----BEGIN CERTIFICATE-----" -v SSL_DOMAIN="$DOMAIN"  '
+        NR==1 {
+            cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".key";
+            print $0 > cert_file;
+        }
+        NR==2 {
+            block_count++;
+            cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".crt";
+            print "-----BEGIN CERTIFICATE-----" $0 > cert_file;
+        } 
+        NR>2 {
+            block_count++;
+            cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".ca";
+            print "-----BEGIN CERTIFICATE-----" $0 > cert_file;
+        } ' $SSL_DOMAIN
+        $BIN/v-add-web-domain-ssl $NEW_USER $DOMAIN apache_tls/ssl/${DOMAIN}/
+done
+
+}
+
+##################
+# mail
+restore_mail() {
+printf "\n%sINFO:%s Start Restoring Mails\n" "$GREEN" "$COLOROFF"
+cd homedir/mail
+
+for folder in *; do
+	if [ -d "$folder" ]; then
+		if [[ "$folder" != "cur" && "$folder" != "new" && "$folder" != "tmp" ]]; then
+			printf "%sINFO:%s Restore mails for domain: %s \n" "$GREEN" "$COLOROFF" $folder
+            # This is needed as parked domains have emails but not added 
+            if ! $BIN/v-list-mail-domains $NEW_USER plain | awk '{ print $1 }' |grep -q "^${folder}$"; then
+	        	printf "%sINFO:%s Found parked domain %s adding as mail domain in Hestia\n" "$GREEN" "$COLOROFF" "$folder"
+	            $BIN/v-add-mail-domain $NEW_USER $folder	    
+	        fi
+			cd $folder
+			mail_account_count=$(find . -maxdepth 1 -mindepth 1 -type d \( ! -name cur ! -name new ! -name tmp \) | wc -l)
+			if [ "$mail_account_count" -eq 0 ]; then
+				printf "%sINFO:%s No mail accounts to restore for domain%s\n" "$GREEN" "$COLOROFF" "$folder"
+				cd ..
+				continue
+			fi
+
+			for mail_account in *; do
+				printf "%sINFO:%s Import mail account: %s@%s\n" "$GREEN" "$COLOROFF" "$mail_account" "$folder"
+				# Doesn't really matter but we don't know the unhashed one
+				tmp_pass=$(generate_password)
+				$BIN/v-add-mail-account $NEW_USER $folder $mail_account $tmp_pass
+				mv $mail_account /home/$NEW_USER/mail/$folder/
+				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$folder/
+
+				# Decompress gzipped emails
+				decompressed_count=0
+				for mail_file in $(find /home/$NEW_USER/mail/$folder -type f); do
+					if file "$mail_file" | grep -q "gzip compressed"; then
+						original_time=$(stat -c %y "$mail_file" 2> /dev/null)
+						gunzip -c "$mail_file" > "${mail_file}.decompressed" && mv "${mail_file}.decompressed" "$mail_file"
+						if [ ! -z "$original_time" ]; then
+							touch -d "$original_time" "$mail_file"
+						fi
+						((decompressed_count++))
+					fi
+				done
+
+				printf "%sINFO:%s %s emails decompressed for %s@%s\n" "$GREEN" "$COLOROFF" "$decompressed_count" "$mail_account" "$folder"
+
+				find /home/$NEW_USER/mail/$folder -type f -name 'dovecot*' -delete
+
+				# Extract and update password from the shadow file
+				password_file="../../etc/${folder}/shadow"
+				if [ -f "$password_file" ]; then
+					pass_line=$(grep "^$mail_account:" $password_file)
+					if [ $? -eq 0 ]; then
+						# Extract the hashed password from the shadow file
+						pass=$(echo "$pass_line" | awk -F ":" '{print $2}')
+						newline="${mail_account}:{SHA512-CRYPT}$pass:${NEW_USER}:mail::/home/${NEW_USER}:0"
+						newline2="ACCOUNT='${mail_account}' ALIAS='' AUTOREPLY='no' FWD='' FWD_ONLY='' MD5='{SHA512-CRYPT}$pass' QUOTA='unlimited' U_DISK='0' SUSPENDED='no' TIME='$time' DATE='$date'"
+						escaped=$(printf '%s\n' "$newline" | sed -e 's/[\/&]/\\&/g')
+						escaped2=$(printf '%s\n' "$newline2" | sed -e 's/[\/&]/\\&/g')
+						sed -i "s/^${mail_account}:.*/$escaped/g" /home/${NEW_USER}/conf/mail/${folder}/passwd
+						sed -i "s/^ACCOUNT='${mail_account}.*/$escaped2/g" /usr/local/hestia/data/users/${NEW_USER}/mail/${folder}.conf
+					else
+						printf "%sWarning:%s Password for %s@%s not found in shadow file.\n" "$YELLOW" "$COLOROFF" "$mail_account" "$folder"
+					fi
+				else
+					printf "%sWarning:%s Shadow file for %s not found.\n" "$YELLOW" "$COLOROFF" "$folder"
+				fi
+			done
+			cd ..
+			$BIN/v-rebuild-mail-domain $NEW_USER $folder
+		fi
+	fi
+done
+}
+
+restore_mx() {
+if [ "$mx" = 'yes' ]; then
+	cd $MAIN_DIR/dnszones
+	for domain in $($BIN/v-list-mail-domains $NEW_USER plain | awk '{ print  $1 }'); do
+		printf "%sINFO:%s Replace MX record for %s \n" "$GREEN" "$COLOROFF" $domain
+		mx_id=$(grep MX $HESTIA/data/users/${NEW_USER}/dns/${domain}.conf | tr "'" " " | cut -d " " -f 2)
+		$BIN/v-delete-dns-record $NEW_USER $domain $mx_id
+		grep MX ${domain}.db | awk '{for(sk=NF;sk>=1;sk--) printf "%s ", $sk;print ""}' | while read value pri ns rest; do
+			if [ "$ns" = "MX" ]; then
+				if [ "$value" == "$sk_mx" ] || [ "$value" == "$sk_mx." ]; then
+					value=mail.$value
+				fi
+				$BIN/v-add-dns-record $NEW_USER $domain @ MX $value $pri
+				if [[ "$?" -ge "1" ]]; then
+					$BIN/v-add-dns-record $NEW_USER $domain @ MX mail.${domain} 0
+				fi
+				printf "%sINFO:%s MX fixed in %s \n " "$GREEN" "$COLOROFF" $sk_mx
+			fi
+		done
+	done
+fi
+}
+
+##################
+# Cron Jobs
+restore_cron() {
+printf "\n%sINFO:%s Start Restoring Cron Jobs For User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+CRON_DIR="$MAIN_DIR/cron"
+cd "$CRON_DIR"
+CRON_FILE="${NEW_USER}"
+if [ -f "$CRON_FILE" ] && [ -s "$CRON_FILE" ]; then
+	while IFS= read -r cron_job || [ -n "$cron_job" ]; do
+		[[ "$cron_job" =~ ^(#.*|\s*|MAILTO=.*|SHELL=.*)$ ]] && continue
+
+		min=$(echo "$cron_job" | awk '{print $1}')
+		hour=$(echo "$cron_job" | awk '{print $2}')
+		day=$(echo "$cron_job" | awk '{print $3}')
+		month=$(echo "$cron_job" | awk '{print $4}')
+		dow=$(echo "$cron_job" | awk '{print $5}')
+		cmd=$(echo "$cron_job" | awk '{for (i=6; i<=NF; i++) printf $i " "; print ""}')
+		#This try fix PHP crons converting cpanel paths to hestia paths
+        if [[ $cmd =~ "ea-php" ]]; then
+            EAPHP=$(echo $cmd | awk '{ print $1 }')
+            # /opt/cpanel/ea-php70/root/bin/php
+            # /usr/local/bin/ea-php70
+            # default hestia /usr/bin/php
+            DEFAULT_PHP="/usr/bin/php"
+            vPHP="ea-php71 ea-php72 ea-php73 ea-php74 ea-php80 ea-php81 ea-php82 ea-php83"
+            EAOPT="opt/cpanel/ea-php"
+            EABIN="usr/local/bin/ea"
+            if [[ $EAPHP =~ $EAOPT ]]; then
+                EAVERSION=$( echo $EAPHP |awk -F '/' '{ print $4}')
+            elif [[ $EAPHP =~ $EABIN ]]; then
+                EAVERSION=$( echo $EAPHP |awk -F '/' '{ print $5}')
+            else
+                echo "Diferent EA Path"
+            fi
+            vPHP=$(echo $EAVERSION | sed "s/ea-php//")
+            N1=${vPHP:0:1}
+            N2=${vPHP:1:1}
+            vPHP=$(echo /usr/bin/php${N1}.${N2})
+            
+            if [ -e $vPHP ]; then
+                cmd=$(echo $cmd | sed "s#$EAPHP#$vPHP#")
+            else
+                cmd=$(echo $cmd | sed "s#$EAPHP#$DEFAULT_PHP#")
+            fi
+        fi
+		$BIN/v-add-cron-job $NEW_USER "$min" "$hour" "$day" "$month" "$dow" "$cmd"
+	done < "$CRON_FILE"
+	printf "%sINFO:%s Cron jobs restored for user %s.\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+else
+	printf "%sINFO:%s No cron jobs file found or it is empty for user %s. \n" "$GREEN" "$COLOROFF" "$NEW_USER"
+fi
+}
+if [ -z "$2" ]; then
+    set -- "$1" "ALL" "${@:3}"
+fi
+OPTIONS=$(echo "${@:2}" | tr '[:lower:]' '[:upper:]')
+
+for OPTION in "$OPTIONS"; do
+    case "$OPTION" in
+        "ALL")
+            restore_databases 
+            restore_domains 
+            restore_mail 
+            restore_mx 
+            restore_cron 
+            ;;
+        "DB")
+            restore_databases 
+            ;;
+        "DOMAIN")
+            restore_domains
+            ;;
+        "MAIL")
+            restore_mail 
+            ;;
+        "MX")
+            restore_mx 
+            ;;
+        "CRON")
+            restore_cron 
+            ;;
+        *)
+            printf "%sWARNING:%s Invalid option %s. You can use ALL, DB, DOMAIN, MAIL, MX o CRON.\n" "$YELLOW" "$COLOROFF" "$OPTION"
+            exit 1
+            ;;
+    esac
+done
+
+
+printf "\n%sINFO:%s cPanel Backup restored\n" "$GREEN" "$COLOROFF"
+printf "%sINFO:%s Review your content and report any fail\n" "$GREEN" "$COLOROFF"
+exit 0
