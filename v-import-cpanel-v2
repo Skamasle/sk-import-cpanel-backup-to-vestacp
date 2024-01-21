@@ -1,14 +1,13 @@
 #!/bin/bash
 # info: Import Cpanel backup to a new user
-# options: BACKUP [ALL] [DB] [DOMAIN] [CRON] [MAIL] [MX]
-
+# options: BACKUP [ALL] [DB] [DOMAIN] [CRON] [MAIL] [MX] [NO-CHECK-USER]
 #
 # example: v-import-cpanel /backup/backup.tar.gz yes
 #
 # Based on sk-import-cpanel-backup-to-vestacp
 # Credits: Maks Usmanov (skamasle) and contributors:
 # Thanks to <https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors>
-# Before v2 hestia original: # Hestia Original: https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
+# After v2 hestia original: # Hestia Original: https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
 # Known issue
 # - It doesn't update DKIM
 
@@ -36,6 +35,15 @@ if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ]; then
     printf "%sINFO:%s Run: apt-get install rsync file" "$GREEN" "$COLOROFF"
 	exit 3
 fi
+NO_CHECK_USER=""
+
+for arg in "$@"; do
+    if [[ $arg == NO-CHECK-USER ]]; then
+        NO_CHECK_USER=ON
+        break
+    fi
+done
+
 
 if [ -f "$1" ]; then
 	CPANEL_BACKUP="$1"
@@ -64,6 +72,27 @@ cleanup_and_exit() {
     exit "$EXIT_CODE"
 }
 trap 'cleanup_and_exit $?' EXIT
+
+is_there() {
+unset IS_THERE
+OBJECT=$1
+TYPE=$2
+USER=$3
+if [[ $TYPE == DB ]]; then
+    if $BIN/v-list-databases $USER | grep -w -q $OBJECT ; then
+        IS_THERE=yes
+    fi
+elif [[ $TYPE == DOMAIN ]]; then
+    if $BIN/v-list-web-domains $USER | grep -w -q "$OBJECT" ; then
+        IS_THERE=yes
+    fi
+elif [[ $TYPE == MAIL ]]; then
+    if $BIN/v-list-mail-accounts $USER | grep -w -q "$OBJECT" ; then
+        IS_THERE=yes
+    fi
+
+fi
+}
 
 printf "%sINFO:%s Checking provided file...\n" "$GREEN" "$COLOROFF"
 
@@ -99,9 +128,14 @@ NEW_USER=$(grep "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
 printf "%sINFO:%s Get User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 CHECK_SYSUSER=$(cut -f 1 -d : /etc/passwd | grep "^$NEW_USER$")
 if [ -n "$CHECK_SYSUSER" ] || [ -e "$HESTIA/data/users/$NEW_USER" ]; then
-	check_result "$E_EXISTS" "user $user exists"
-    printf "%sERROR:%s User allready exists\n"  "$RED" "$COLOROFF"
-	exit 2
+    if [[ $NO_CHECK_USER == ON ]]; then
+        printf "%sWarning:%s %s Alredy exists in this server, but you select import backup in any way.\n" "$YELLOW" "$COLOROFF" "$NEW_USER"
+        NO_CREATE_USER=yes
+    else
+	    check_result "$E_EXISTS" "user $user exists"
+        printf "%sERROR:%s User allready exists\n"  "$RED" "$COLOROFF"
+	    exit 2
+	fi
 fi
 
 # Extract cPanel package name
@@ -114,6 +148,7 @@ else
 	printf "%sWARNING:%s Default package %s will be used for the user %s.\n" "$YELLOW" "$COLOROFF" "$HESTIA_PACKAGE" "$NEW_USER"
 fi
 
+if [[ $NO_CREATE_USER != yes ]]; then
 # Create a new user
 TMP_PASSWD=$(generate_password)
 email=$(cat ./cp/$NEW_USER | grep CONTACTEMAIL= | cut -f2 -d'=')
@@ -130,6 +165,8 @@ fi
 printf "\n%sINFO%s: Restoring user password.\n" "$GREEN" "$COLOROFF"
 update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
 $BIN/v-rebuild-user "$NEW_USER"
+fi
+
 restore_databases(){
 # Restore databases
 mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
@@ -165,7 +202,8 @@ date=$(echo "$time_n_date" | cut -f 2 -d \ )
 cat uni_u_db | while read db userdb; do
 	grep -w $userdb user_password_db | while read user end_user_pass; do
 		if [ "$userdb" == "$user" ] && [ "$userdb" != "$NEW_USER" ]; then
-			echo "DB='$db' DBUSER='$userdb' MD5='$end_user_pass' HOST='localhost' TYPE='mysql' CHARSET='UTF8' U_DISK='0' SUSPENDED='no' TIME='$time' DATE='$data'" >> /usr/local/hestia/data/users/$NEW_USER/db.conf
+			printf "DB='%s' DBUSER='%s' MD5='%s' HOST='localhost' TYPE='mysql' CHARSET='UTF8' U_DISK='0' SUSPENDED='no' TIME='%s' DATE='%s'\n" \
+           "$db" "$userdb" "$end_user_pass" "$time" "$data" >> /usr/local/hestia/data/users/"$NEW_USER"/db.conf
 		fi
 	done
 done
@@ -197,51 +235,51 @@ function get_domain_path() {
 	while read CP_DOMAIN path; do
 		printf "%sINFO:%s Import $CP_DOMAIN\n" "$GREEN" "$COLOROFF"
 		if [ -e userdata/$CP_DOMAIN ]; then
-			$BIN/v-add-domain "$NEW_USER" "$CP_DOMAIN"
-			if [ $? -ne 0 ]; then
-				check_result "1" "Unable to create domain it allready exists"
-			fi
-			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/index.html
-			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/robots.txt
-			sync_count=0
-			rsync -av homedir/$path/ /home/$NEW_USER/web/$CP_DOMAIN/public_html 2>&1 \
-				| while read file_dm; do
-					sync_count=$(($sync_count + 1))
-					echo -en "-- $sync_count restored files\r"
-				done
-			chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$CP_DOMAIN/public_html
-			chown $NEW_USER:www-data /home/$NEW_USER/web/$CP_DOMAIN/public_html
-			chmod 751 /home/$NEW_USER/web/$CP_DOMAIN/public_html
-			echo "$CP_DOMAIN" >> exclude_path
-		fi
+            is_there "$CP_DOMAIN" "DOMAIN" "$NEW_USER"
+            if [[ IS_THERE != yes ]]; then  
+			    $BIN/v-add-domain "$NEW_USER" "$CP_DOMAIN"
+    			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/index.html
+    			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/robots.txt
+    			sync_count=0
+    			rsync -av homedir/$path/ /home/$NEW_USER/web/$CP_DOMAIN/public_html 2>&1 \
+    				| while read file_dm; do
+    					sync_count=$(($sync_count + 1))
+    					echo -en "-- $sync_count restored files\r"
+    				done
+    			chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$CP_DOMAIN/public_html
+    			chown $NEW_USER:www-data /home/$NEW_USER/web/$CP_DOMAIN/public_html
+    			chmod 751 /home/$NEW_USER/web/$CP_DOMAIN/public_html
+    			echo "$CP_DOMAIN" >> exclude_path
+    		fi
+    	else
+    	    printf "%sWARNING:%s Domain %s already added, skip..\n" "$YELLOW" "$COLOROFF" "$CP_DOMAIN"
+    	fi
 	done
 }
 get_domain_path < hst_sds2
 
-$BIN/v-add-domain $NEW_USER $MAIN_DOMAIN1
-
-if [ $? -ne 0 ]; then
-	check_result "1" "Unable to create domain it allready exists"
-fi
+is_there "$MAIN_DOMAIN1" "DOMAIN" "$NEW_USER"
+if [[ IS_THERE != yes ]]; then
+    $BIN/v-add-domain $NEW_USER $MAIN_DOMAIN1
 
 # need it for restore main domain
-if [ ! -e exclude_path ]; then
-	touch exclude_path
+    if [ ! -e exclude_path ]; then
+	    touch exclude_path
+    fi
+    printf "%sINFO:%s Restore main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
+    rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/index.html
+    rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/robots.txt
+
+    rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
+    	| while read file_dm; do
+	    	sync_count=$(($sync_count + 1))
+	    	echo -en "-- $sync_count restored files\r"
+    	done
+
+    chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
+    chown $NEW_USER:www-data /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
+    chmod 751 /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
 fi
-printf "%sINFO:%s Restore main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
-rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/index.html
-rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/robots.txt
-
-rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
-	| while read file_dm; do
-		sync_count=$(($sync_count + 1))
-		echo -en "-- $sync_count restored files\r"
-	done
-
-chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
-chown $NEW_USER:www-data /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
-chmod 751 /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
-
 ####### Set Domain PHP version
 PHP_VERSION_LINE=$(grep -r "phpversion:" userdata/$MAIN_DOMAIN1)
 CPANEL_PHP_VERSION=${PHP_VERSION_LINE#*: }
@@ -312,6 +350,14 @@ done
 
 ##################
 # mail
+quota_convert() {
+BYTES=$1
+if [[ $BYTES == 0 ]] || [[ $BYTES == -1 ]] || [[ $BYTES == unlimited ]]; then
+    QUOTA=unlimited
+else
+    QUOTA=$(echo "scale=0; $BYTES / 1024 / 1024" | bc)
+fi
+}
 restore_mail() {
 printf "\n%sINFO:%s Start Restoring Mails\n" "$GREEN" "$COLOROFF"
 cd homedir/mail
@@ -337,7 +383,9 @@ for FOLDER in *; do
 				printf "%sINFO:%s Import mail account: %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
 				# Doesn't really matter but we don't know the unhashed one
 				TMP_PASSWD=$(generate_password)
-				$BIN/v-add-mail-account $NEW_USER $FOLDER $MAIL_ACCOUNT $TMP_PASSWD
+				QUOTA=$(sed "s/:/ /g" ../../etc/${FOLDER}/quota |grep -w $MAIL_ACCOUNT | awk '{ print $2 }')
+				quota_convert $QUOTA
+				$BIN/v-add-mail-account $NEW_USER $FOLDER $MAIL_ACCOUNT $TMP_PASSWD $QUOTA
 				mv $MAIL_ACCOUNT /home/$NEW_USER/mail/$FOLDER/
 				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$FOLDER/
 
@@ -366,7 +414,7 @@ for FOLDER in *; do
 						# Extract the hashed password from the shadow file
 						pass=$(echo "$PASS_LINE" | awk -F ":" '{print $2}')
 						NEW_LINE="${MAIL_ACCOUNT}:{SHA512-CRYPT}$pass:${NEW_USER}:mail::/home/${NEW_USER}:0"
-						NEW_LINE2="ACCOUNT='${MAIL_ACCOUNT}' ALIAS='' AUTOREPLY='no' FWD='' FWD_ONLY='' MD5='{SHA512-CRYPT}$pass' QUOTA='unlimited' U_DISK='0' SUSPENDED='no' TIME='$time' DATE='$date'"
+						NEW_LINE2="ACCOUNT='${MAIL_ACCOUNT}' ALIAS='' AUTOREPLY='no' FWD='' FWD_ONLY='' MD5='{SHA512-CRYPT}$pass' QUOTA='$QUOTA' U_DISK='0' SUSPENDED='no' TIME='$time' DATE='$date'"
 						escaped=$(printf '%s\n' "$NEW_LINE" | sed -e 's/[\/&]/\\&/g')
 						escaped2=$(printf '%s\n' "$NEW_LINE2" | sed -e 's/[\/&]/\\&/g')
 						sed -i "s/^${MAIL_ACCOUNT}:.*/$escaped/g" /home/${NEW_USER}/conf/mail/${FOLDER}/passwd
@@ -469,26 +517,28 @@ OPTIONS=$(echo "${@:2}" | tr '[:lower:]' '[:upper:]')
 for OPTION in $OPTIONS; do
     case "$OPTION" in
         "ALL")
-            restore_databases 
-            restore_domains 
-            restore_mail 
-            restore_mx 
-            restore_cron 
+            restore_databases
+            restore_domains
+            restore_mail
+            restore_mx
+            restore_cron
             ;;
         "DB")
-            restore_databases 
+            restore_databases
             ;;
         "DOMAIN")
             restore_domains
             ;;
         "MAIL")
-            restore_mail 
+            restore_mail
             ;;
         "MX")
             restore_mx 
             ;;
         "CRON")
             restore_cron 
+            ;;
+        "NO-CHECK-USER")
             ;;
          *)
             printf "%sWARNING:%s Invalid option %s. You can use ALL, DB, DOMAIN, MAIL, MX o CRON.\n" "$YELLOW" "$COLOROFF" "$OPTION"
