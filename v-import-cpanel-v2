@@ -134,6 +134,7 @@ if [[ $CHANGE_CP_USER == yes ]]; then
     sed -i "s/${CP_USER}_/${NEW_USER}_/g" mysql/*
     sed -i "s/\"${CP_USER}\"/\"${NEW_USER}\"/g" mysql.sql-auth.json
     mv "cp/${CP_USER}" "cp/${NEW_USER}"
+    mv "cron/${CP_USER}" "cron/${NEW_USER}"
     for DB_NAME in $(ls mysql |grep -E 'sql|create')
     do
         NEW_DB_NAME=$(echo $DB_NAME | sed "s/${CP_USER}_/${NEW_USER}_/")
