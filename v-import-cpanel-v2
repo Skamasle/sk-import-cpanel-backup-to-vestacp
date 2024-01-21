@@ -1,6 +1,6 @@
 #!/bin/bash
 # info: Import Cpanel backup to a new user
-# options: BACKUP [ALL] [DB] [DOMAIN] [CRON] [MAIL] [MX] [NO-CHECK-USER]
+# options: BACKUP [ALL] [DB] [DOMAIN] [CRON] [MAIL] [MX] [NO-CHECK-USER] [RESTORE-IN-USER=user]
 #
 # example: v-import-cpanel /backup/backup.tar.gz yes
 #
@@ -36,10 +36,18 @@ if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ]; then
 	exit 3
 fi
 NO_CHECK_USER=""
-
+NEW_USER=""
+CHANGE_CP_USER=""
 for arg in "$@"; do
     if [[ $arg == NO-CHECK-USER ]]; then
         NO_CHECK_USER=ON
+        break
+    fi
+done
+for arg in "$@"; do
+    if [[ $arg =~ RESTORE-IN-USER ]]; then
+        NEW_USER=$(echo $arg | awk -F "=" '{ print $2}' | tr '[:upper:]' '[:lower:]' )
+        CHANGE_CP_USER=yes
         break
     fi
 done
@@ -115,6 +123,30 @@ else
 fi
 
 cd $TMPDIR/*
+if [[ $CHANGE_CP_USER == yes ]]; then
+    MAIN_DOMAIN1=$(grep main_domain userdata/main | cut -d " " -f2)
+    CP_USER=$(grep "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
+    printf "%sWARNING:%s You select change user, cpanel backup user is: >> %s <<  will be restored in >> %s <<\n" "$YELLOW" "$COLOROFF" "$CP_USER" "$NEW_USER"
+    #Convert backup prefix
+    sed -i "s/user: $CP_USER/user: $NEW_USER/" userdata/*
+    sed -i 's/\\//g' mysql.sql
+    sed -i "s/${CP_USER}_/${NEW_USER}_/g" mysql.sql
+    sed -i "s/${CP_USER}_/${NEW_USER}_/g" mysql/*
+    sed -i "s/\"${CP_USER}\"/\"${NEW_USER}\"/g" mysql.sql-auth.json
+    mv "cp/${CP_USER}" "cp/${NEW_USER}"
+    for DB_NAME in $(ls mysql |grep -E 'sql|create')
+    do
+        NEW_DB_NAME=$(echo $DB_NAME | sed "s/${CP_USER}_/${NEW_USER}_/")
+        mv "mysql/${DB_NAME}" "mysql/${NEW_DB_NAME}"
+    done
+    # Try Fix mysql config in php files, need bigger list or pass it as argument...
+    printf "%sINFO:%s Fixind database prefix in php configuration files\n" "$GREEN" "$COLOROFF" 
+    find -type f \( -name "settings.php" -o -name "wp-config.php" -o -name "*config.php" \) | while read CONFIG_FILE
+    do
+        sed -i "s/${CP_USER}_/${NEW_USER}_/g" $CONFIG_FILE
+    done
+# From here script works normal
+fi
 
 MAIN_DIR=$(pwd)
 printf "%sINFO:%s Access tmp directory, working DIR is %s\n" "$GREEN" "$COLOROFF" "$MAIN_DIR"
@@ -179,7 +211,11 @@ grep "GRANT USAGE ON" mysql.sql | awk -F "'" '{ print $2, $6 }' | uniq > user_pa
 # User and database
 grep "GRANT" mysql.sql | grep -v "USAGE ON" > u_db
 cat u_db | awk -F "'" '{ print $2, $4 }' | sort | uniq > uni_u_db
-sed -i "/$NEW_USER /d" user_password_db
+if [[ $CHANGE_CP_USER == yes ]]; then
+    sed -i "/$CP_USER /d" user_password_db
+else
+    sed -i "/$NEW_USER /d" user_password_db
+fi
 # Get database list
 DB_LIST=$(grep -m 1 Database: mysql/*.create | awk '{ print  $5 }')
 # Fix mysql 8 to mariadb problems here:
@@ -539,6 +575,8 @@ for OPTION in $OPTIONS; do
             restore_cron 
             ;;
         "NO-CHECK-USER")
+            ;;
+        "RESTORE-IN-USER="*)
             ;;
          *)
             printf "%sWARNING:%s Invalid option %s. You can use ALL, DB, DOMAIN, MAIL, MX o CRON.\n" "$YELLOW" "$COLOROFF" "$OPTION"
