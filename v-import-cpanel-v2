@@ -142,7 +142,11 @@ if [[ $CHANGE_CP_USER == yes ]]; then
     done
     # Try Fix mysql config in php files, need bigger list or pass it as argument...
     printf "%sINFO:%s Fixind database prefix in php configuration files\n" "$GREEN" "$COLOROFF" 
-    find -type f \( -name "settings.php" -o -name "wp-config.php" -o -name "*config.php" \) | while read CONFIG_FILE
+    find -type f \( -name "settings.php" -o -name "wp-config.php" \
+            -o -name "parameters.php"  -o -name "env.php" -o -name "config.php" \
+            -o -name "configuration.php" -o -name "LocalConfiguration.php" \
+            -o -name "parameters.php" -o -name "settings.inc.php" \) \
+    | while read CONFIG_FILE
     do
         sed -i "s/${CP_USER}_/${NEW_USER}_/g" $CONFIG_FILE
     done
@@ -183,21 +187,21 @@ fi
 
 if [[ $NO_CREATE_USER != yes ]]; then
 # Create a new user
-TMP_PASSWD=$(generate_password)
-email=$(cat ./cp/$NEW_USER | grep CONTACTEMAIL= | cut -f2 -d'=')
-if [ -z "$email" ]; then
-	# Hestia does not like email to be set to an empty string
-	email="info@"$(hostname)
-fi
-$BIN/v-add-user "$NEW_USER" "$TMP_PASSWD" "$email" "$HESTIA_PACKAGE"
-if [ "$?" -ne 0 ]; then
-	printf "\n%sERROR%s: Unable to create user" "$GREEN" "$COLOROFF"
-	exit 1
-fi
-# Restore user password
-printf "\n%sINFO%s: Restoring user password.\n" "$GREEN" "$COLOROFF"
-update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
-$BIN/v-rebuild-user "$NEW_USER"
+    TMP_PASSWD=$(generate_password)
+    email=$(cat ./cp/$NEW_USER | grep CONTACTEMAIL= | cut -f2 -d'=')
+    if [ -z "$email" ]; then
+    	# Hestia does not like email to be set to an empty string
+    	email="info@"$(hostname)
+    fi
+    $BIN/v-add-user "$NEW_USER" "$TMP_PASSWD" "$email" "$HESTIA_PACKAGE"
+    if [ "$?" -ne 0 ]; then
+    	printf "\n%sERROR%s: Unable to create user" "$GREEN" "$COLOROFF"
+    	exit 1
+    fi
+    # Restore user password
+    printf "\n%sINFO%s: Restoring user password.\n" "$GREEN" "$COLOROFF"
+    update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
+    $BIN/v-rebuild-user "$NEW_USER"
 fi
 
 restore_databases(){
@@ -260,7 +264,7 @@ cp sds hst_sds
 cp sds2 hst_sds2
 sed -i 's/_/./g' hst_sds
 cat addons | while read ADDON_DOMAINS ADDON_SUB; do
-printf "%sINFO:%s Converting default subdomain: %s in domain: %s\n" "$GREEN" "$COLOROFF" "$ADDON_SUB"  "$ADDON_DOMAINS"
+    printf "%sINFO:%s Converting default subdomain: %s in domain: %s\n" "$GREEN" "$COLOROFF" "$ADDON_SUB"  "$ADDON_DOMAINS"
 	sed -i -e "s/$ADDON_SUB/$ADDON_DOMAINS/g" hst_sds
 	sed -i -e "s/$ADDON_SUB/$ADDON_DOMAINS/g" hst_sds2
 	mv userdata/$ADDON_SUB userdata/${ADDON_DOMAINS}
