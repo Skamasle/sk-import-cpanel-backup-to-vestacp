@@ -1,6 +1,28 @@
 # sk-importer
-v-restore-cpanel-v2 is a copy of https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
+v-import-cpanel-v2 is a copy of https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
 Make some changes for testing, then make some pull request in oficial repo
+
+v-import-cpanel-v2
+- Add progress when restoring mails
+- Add progress when unzip archive, good to know if script do something
+- Fix EA-PHP paths in cron job / replace by hestiacp paths or default if not exists
+- Fix Bug when restore addon domains
+- Fix Bug when restore databases
+- Added option to change cpanel user ( beta script also try fix PHP configuration files, database prefix etc script search for most common, settings.php. wp-config.php etc with new user / prefix)
+- Added options to restore if user alredy exist ( beta we try not overwrite existing data need more test )
+- Added Option to restore only databases, Only emails or Only domains
+- Now we can restore parked domains and parked domain mails.
+- Improve output, change all ECHOs for printf
+- Change VARS to UPERCASE ( 95% completed )
+- Added option to restore SSL ( need more tests )
+- Fix Bug, continue restoring either if php version not exists, just asign default.
+- Added now quota for mail account asigned as in cpanel account
+- By default disabled option to search and unzip compressed mails , in script change FIND_GZIPED_MAILS=no to yes to activate search for compressed mails, this function is too slowin big emails accounts
+TODO:
+- Check if mails are in maildir format or mdbox
+- Restore DKIM really need restore it ? if local mail we can generate new one.
+- Need check MX restore optión again.
+
 
 Import cPanel backup in vestacp
 
