@@ -8,7 +8,7 @@ v-import-cpanel-v2
 - Fix EA-PHP paths in cron job / replace by hestiacp paths or default if not exists
 - Fix Bug when restore addon domains
 - Fix Bug when restore databases
-- Added option to change cpanel user ( beta script also try fix PHP configuration files, database prefix etc script search for most common, settings.php. wp-config.php etc with new user / prefix)
+- Added option to change cpanel user ( beta script also try fix PHP configuration files, database prefix, script search for most common configuration files settings.php. wp-config.php and fix DB_PREFIX_)
 - Added options to restore if user alredy exist ( beta we try not overwrite existing data need more test )
 - Added Option to restore only databases, Only emails or Only domains
 - Now we can restore parked domains and parked domain mails.
