@@ -328,7 +328,7 @@ if [[ IS_THERE != yes ]]; then
     rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
     	| while read file_dm; do
 	    	SYNC_COUNT=$(($SYNC_COUNT + 1))
-            printf "\r%sINFO:%s-- %s restored files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
+            printf "\r%sINFO:%s Restoring -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
     	done
     printf "\n"
     chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
