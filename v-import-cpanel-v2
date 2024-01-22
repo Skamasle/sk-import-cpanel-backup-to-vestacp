@@ -466,9 +466,10 @@ for FOLDER in *; do
 				    		((DECOMPRESSED_COUNT++))
 				    	fi
 			    	done
+			    	printf "%sINFO:%s %s emails decompressed for %s@%s\n" "$GREEN" "$COLOROFF" "$DECOMPRESSED_COUNT" "$MAIL_ACCOUNT" "$FOLDER"
 			    fi
 
-				printf "%sINFO:%s %s emails decompressed for %s@%s\n" "$GREEN" "$COLOROFF" "$DECOMPRESSED_COUNT" "$MAIL_ACCOUNT" "$FOLDER"
+
 
 				find /home/$NEW_USER/mail/$FOLDER -type f -name 'dovecot*' -delete
 
