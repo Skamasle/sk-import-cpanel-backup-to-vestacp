@@ -7,10 +7,17 @@
 # Based on sk-import-cpanel-backup-to-vestacp
 # Credits: Maks Usmanov (skamasle) and contributors:
 # Thanks to <https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors>
-# v2 Based from hestia original:  https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
+# Before v2 hestia original:  https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
 # Known issue
 # - It doesn't update DKIM
+# - Restore mail forwarders - Pending
+# Detect mailbox_format.cpanel == maildir
 
+
+# Not all need this, but if needed enable here, 
+# For NOW disabled by default too slow option in big mail accounts
+# Function need be rebuilded
+FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/etc/hestiacp/hestia.conf
@@ -25,15 +32,15 @@ if [ $# -lt 1 ]; then
 	echo "usage: bash $0 cpanel-backup.tar.gz"
 	echo "or"
 	echo "usage: bash $0 cpanel-backup.tar.gz ALL # Default opción is ALL can be omited "
-	echo "usage: bash $0 cpanel-backup.tar.gz MAIL DB DOMAIN CRON MX"
+    echo "usage: bash $0 cpanel-backup.tar.gz MAIL DB DOMAIN CRON MX"
 	exit 1
 fi
 
 if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ]; then
-	printf "%sWARNING:%s rsync not installed, try install it\n" "$YELLOW" "$COLOROFF"
-	printf "%sWARNING:%s This script need: rsync, file" "$YELLOW" "$COLOROFF"
+    printf "%sWARNING:%s rsync not installed, try install it\n" "$YELLOW" "$COLOROFF"
+    printf "%sWARNING:%s This script need: rsync, file" "$YELLOW" "$COLOROFF"
     printf "%sINFO:%s Run: apt-get install rsync file" "$GREEN" "$COLOROFF"
-	exit 3
+    exit 3
 fi
 NO_CHECK_USER=""
 NEW_USER=""
@@ -56,14 +63,21 @@ done
 if [ -f "$1" ]; then
 	CPANEL_BACKUP="$1"
 fi
-if [ -n "$2" ]; then
-	mx="$2"
-fi
 if [ -z "$BACKUP_TEMP" ]; then
 	BACKUP_TEMP=$BACKUP
 else
 	printf "%sWARNING:%s File does not exists\n" "$YELLOW" "$COLOROFF"
 	exit 1
+fi
+# Lets check if have space in home to restore all
+BACKUP_SIZE=$(stat -c %s "$CPANEL_BACKUP")
+NEED_SPACE=$((BACKUP_SIZE * 2 + BACKUP_SIZE / 2))
+HOME_SPACE=$(df -B1 /home | awk 'NR==2 {print $4}')
+if [[ "$HOME_SPACE" -ge "$NEED_SPACE" ]]; then
+    printf "%sINFO:%s Detected sufficient space to restore the backup.\n" "$GREEN" "$COLOROFF" 
+else
+    printf "%sERROR:%s Dtected insufficient free space to restore the backup, need %s bytes have %s bytes in home\n" "$RED" "$COLOROFF" "$NEED_SPACE" "$HOME_SPACE"
+    exit 4
 fi
 
 # Creating temporary directory
@@ -74,8 +88,8 @@ cleanup_and_exit() {
     EXIT_CODE=$1
     printf "%sINFO:%s Exit and clean %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
 
-    if [ -d "$temp_dir" ]; then
-        rm -rf "$temp_dir"
+    if [ -d "$TMPDIR" ]; then
+        rm -rf "$TMPDIR"
     fi
     exit "$EXIT_CODE"
 }
@@ -106,19 +120,18 @@ printf "%sINFO:%s Checking provided file...\n" "$GREEN" "$COLOROFF"
 
 if ! file "$CPANEL_BACKUP" | grep -q -c "gzip compressed data,"; then
 	printf "%sError 3 not-gzip - no stantard cpanel backup provided of file not installed ( Try yum install file, or apt-get install file )%s\n" "$RED" "$COLOROFF"
-	rm -rf "$TMPDIR"
 	exit 3
 fi
 
-printf "%sINFO:%s OK - Gziped File\n" "$GREEN" "$COLOROFF"
+printf "%sINFO:%s OK - Gzipped File Detected,  Initiating Extraction::\n" "$GREEN" "$COLOROFF"
 
-printf "%sINFO:%s Extracting backup...\n" "$GREEN" "$COLOROFF"
-if tar xzf "$CPANEL_BACKUP" -C "$TMPDIR"; then
+pv "$CPANEL_BACKUP" |  tar xz  -C "$TMPDIR"
+
+if [[ $? -eq 0 ]]; then
 	printf "%sINFO:%s Backup extracted without errors...\n" "$GREEN" "$COLOROFF"
 else
 	printf "%sERROR!! %s on backup extraction, check your file, try extract it manually\n"  "$RED" "$COLOROFF"
 	printf "%sINFO:%s Removing %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
-	rm -rf "$TMPDIR"
 	exit 1
 fi
 
@@ -281,12 +294,13 @@ function get_domain_path() {
 			    $BIN/v-add-domain "$NEW_USER" "$CP_DOMAIN"
     			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/index.html
     			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/robots.txt
-    			sync_count=0
+    			SYNC_COUNT=0
     			rsync -av homedir/$path/ /home/$NEW_USER/web/$CP_DOMAIN/public_html 2>&1 \
     				| while read file_dm; do
-    					sync_count=$(($sync_count + 1))
-    					echo -en "-- $sync_count restored files\r"
+    					SYNC_COUNT=$(($SYNC_COUNT + 1))
+    					printf "\r%sINFO:%s Restoring -- %s  files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
     				done
+    		    printf "\n"
     			chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$CP_DOMAIN/public_html
     			chown $NEW_USER:www-data /home/$NEW_USER/web/$CP_DOMAIN/public_html
     			chmod 751 /home/$NEW_USER/web/$CP_DOMAIN/public_html
@@ -313,10 +327,10 @@ if [[ IS_THERE != yes ]]; then
 
     rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
     	| while read file_dm; do
-	    	sync_count=$(($sync_count + 1))
-	    	echo -en "-- $sync_count restored files\r"
+	    	SYNC_COUNT=$(($SYNC_COUNT + 1))
+            printf "\r%sINFO:%s-- %s restored files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
     	done
-
+    printf "\n"
     chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
     chown $NEW_USER:www-data /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
     chmod 751 /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
@@ -427,21 +441,31 @@ for FOLDER in *; do
 				QUOTA=$(sed "s/:/ /g" ../../etc/${FOLDER}/quota |grep -w $MAIL_ACCOUNT | awk '{ print $2 }')
 				quota_convert $QUOTA
 				$BIN/v-add-mail-account $NEW_USER $FOLDER $MAIL_ACCOUNT $TMP_PASSWD $QUOTA
-				mv $MAIL_ACCOUNT /home/$NEW_USER/mail/$FOLDER/
+				COUNT="0"
+				rsync -av $MAIL_ACCOUNT /home/$NEW_USER/mail/$FOLDER/ | while read line
+				    do
+				    ((COUNT++))
+				    printf "\r%sINFO:%s Restoring: %s mails" "$GREEN" "$COLOROFF" "$COUNT"
+				    done
+				printf "\n"
 				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$FOLDER/
-
-				# Decompress gzipped emails
-				DECOMPRESSED_COUNT=0
-				for MAIL_FILE in $(find /home/$NEW_USER/mail/$FOLDER -type f); do
-					if file "$MAIL_FILE" | grep -q "gzip compressed"; then
-						original_time=$(stat -c %y "$MAIL_FILE" 2> /dev/null)
-						gunzip -c "$MAIL_FILE" > "${MAIL_FILE}.decompressed" && mv "${MAIL_FILE}.decompressed" "$MAIL_FILE"
-						if [ ! -z "$original_time" ]; then
-							touch -d "$original_time" "$MAIL_FILE"
-						fi
-						((DECOMPRESSED_COUNT++))
-					fi
-				done
+                if [[ $FIND_GZIPED_MAILS == yes ]]; then
+				    # Decompress gzipped emails
+				    DECOMPRESSED_COUNT=0
+				    #TODO Change bucle FOR for while, FOR cant process more than 65k files
+				    # Is too slow, never see compressed mail in cpanel, wee need search for extension
+				    # andnot check with file then grep, its very slow in more than 1000 Mails ( minutes ).
+				    find /home/$NEW_USER/mail/$FOLDER -type f | while read MAIL_FILE do
+				    	if file "$MAIL_FILE" | grep -q "gzip compressed"; then
+				    		ORIGINAL_TIME=$(stat -c %y "$MAIL_FILE" 2> /dev/null)
+				    		gunzip -c "$MAIL_FILE" > "${MAIL_FILE}.decompressed" && mv "${MAIL_FILE}.decompressed" "$MAIL_FILE"
+				    		if [ ! -z "$ORIGINAL_TIME" ]; then
+				    			touch -d "$ORIGINAL_TIME" "$MAIL_FILE"
+				    		fi
+				    		((DECOMPRESSED_COUNT++))
+				    	fi
+			    	done
+			    fi
 
 				printf "%sINFO:%s %s emails decompressed for %s@%s\n" "$GREEN" "$COLOROFF" "$DECOMPRESSED_COUNT" "$MAIL_ACCOUNT" "$FOLDER"
 
