@@ -455,7 +455,8 @@ for FOLDER in *; do
 				    #TODO Change bucle FOR for while, FOR cant process more than 65k files
 				    # Is too slow, never see compressed mail in cpanel, wee need search for extension
 				    # andnot check with file then grep, its very slow in more than 1000 Mails ( minutes ).
-				    find /home/$NEW_USER/mail/$FOLDER -type f | while read MAIL_FILE do
+				    find /home/$NEW_USER/mail/$FOLDER -type f | while read MAIL_FILE 
+				    do
 				    	if file "$MAIL_FILE" | grep -q "gzip compressed"; then
 				    		ORIGINAL_TIME=$(stat -c %y "$MAIL_FILE" 2> /dev/null)
 				    		gunzip -c "$MAIL_FILE" > "${MAIL_FILE}.decompressed" && mv "${MAIL_FILE}.decompressed" "$MAIL_FILE"
