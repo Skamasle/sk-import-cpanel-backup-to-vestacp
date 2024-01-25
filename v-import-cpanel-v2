@@ -419,8 +419,8 @@ cd homedir/mail
 # We can convert this but need some backups with mdbox for tests.
 if ! grep -q maildir mailbox_format.cpanel ; then
     printf "%s¡WARNING!:%sDetected diferent Mail Box Format to MailDir,  \
-    if your backup have mdbox you need convert to maildir manually"  "$YELLOW" "$COLOROFF" 
-    printf "%sINFO:%s Check mailbox formats in https://doc.dovecot.org/admin_manual/mailbox_formats/dbox/" "$GREEN" "$COLOROFF" 
+    if your backup have mdbox you need convert to maildir manually\n"  "$YELLOW" "$COLOROFF" 
+    printf "%sINFO:%s Check mailbox formats in https://doc.dovecot.org/admin_manual/mailbox_formats/dbox/\n" "$GREEN" "$COLOROFF" 
 fi
 for FOLDER in *; do
 	if [ -d "$FOLDER" ]; then
