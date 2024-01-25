@@ -416,7 +416,12 @@ fi
 restore_mail() {
 printf "\n%sINFO:%s Start Restoring Mails\n" "$GREEN" "$COLOROFF"
 cd homedir/mail
-
+# We can convert this but need some backups with mdbox for tests.
+if ! grep -q maildir mailbox_format.cpanel ; then
+    printf "%s¡WARNING!:%sDetected diferent Mail Box Format to MailDir,  \
+    if your backup have mdbox you need convert to maildir manually"  "$YELLOW" "$COLOROFF" 
+    printf "%sINFO:%s Check mailbox formats in https://doc.dovecot.org/admin_manual/mailbox_formats/dbox/" "$GREEN" "$COLOROFF" 
+fi
 for FOLDER in *; do
 	if [ -d "$FOLDER" ]; then
 		if [[ "$FOLDER" != "cur" && "$FOLDER" != "new" && "$FOLDER" != "tmp" ]]; then
