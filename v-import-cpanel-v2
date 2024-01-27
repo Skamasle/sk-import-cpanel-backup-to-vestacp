@@ -11,12 +11,14 @@
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-# Detect mailbox_format.cpanel == maildir
-
 
 # Not all need this, but if needed enable here, 
 # For NOW disabled by default too slow option in big mail accounts
 # Function need be rebuilded
+VERSION=2.0.1
+if [[ $1 == version ]] || [[ $1 == --version ]]; then
+    printf "Version: %s\n" "$VERSION"
+fi
 FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
@@ -364,11 +366,12 @@ fi
 
 # Parked domains
 if [ -s pds ]; then
-    cat pds | while read parked
+    cat pds | while read PARKED
     do
         printf "%sINFO:%s Procesing parked domain: %s\n" "$GREEN" "$COLOROFF" "$parked"
-        parkedfor=$(cat userdata/cache.json |  jq --arg domain "$parked" '.[$domain][3]' |sed 's/"//g')
-        $BIN/v-add-web-domain-alias $NEW_USER $parkedfor $parked
+        PARKEDFOR=$(cat userdata/cache.json |  jq --arg domain "$PARKED" '.[$domain][3]' |sed 's/"//g')
+        $BIN/v-add-web-domain-alias $NEW_USER $PARKEDFOR $PARKED
+        $BIN/v-add-dns-domain $NEW_USER $PARKED
     done
 else
 
@@ -417,7 +420,7 @@ restore_mail() {
 printf "\n%sINFO:%s Start Restoring Mails\n" "$GREEN" "$COLOROFF"
 cd homedir/mail
 # We can convert this but need some backups with mdbox for tests.
-if ! grep -q maildir mailbox_format.cpanel ; then
+if [ -e "mailbox_format.cpanel" ] && ! grep -q 'maildir' "mailbox_format.cpanel";then
     printf "%s¡WARNING!:%s HestiaCP requiere mails be stored in maildir format, we detect mdbox, you may need convert it manually\n"  "$YELLOW" "$COLOROFF" 
     printf "%sINFO:%s Check mailbox formats in https://doc.dovecot.org/admin_manual/mailbox_formats/dbox/\n" "$GREEN" "$COLOROFF" 
 fi
@@ -620,6 +623,8 @@ for OPTION in $OPTIONS; do
     esac
 done
 
+printf "%sINFO:%s Rebuild Statistics for user %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+$BIN/v-update-user-stats $NEW_USER
 
 printf "\n%sINFO:%s cPanel Backup restored\n" "$GREEN" "$COLOROFF"
 printf "%sINFO:%s Review your content and report any fail\n" "$GREEN" "$COLOROFF"
