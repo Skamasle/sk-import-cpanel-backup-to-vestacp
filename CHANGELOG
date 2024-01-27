@@ -2,9 +2,9 @@
 - Bug fix when added parked domain
 2.0.1
 - Now can run v-import-cpanel versin to know if runing latest
-- Added rebuild new hestia user statistics
-- Fix error when mailbox_format.cpanel not exists
-- Parked domain added as DNS domain
+- Added rebuild new hestia user statistics @alfonsofp thanks for report
+- Fix error when mailbox_format.cpanel not exists @alfonsofp thanks for report
+- Parked domain added as DNS domain @alfonsofp thanks for report
 2.0
 - Add progress when restoring mails
 - Add progress when unzip archive, good to know if script do something
@@ -22,3 +22,6 @@
 - Added now quota for mail account asigned as in cpanel account
 - By default disabled option to search and unzip compressed mails , in script change FIND_GZIPED_MAILS=no to yes to activate search for compressed mails, this function is too slowin big emails accounts
 - Added option to detect disk space, we not want unzip 30 GB to get insufficient storage, Check 2.5x space more than backup size to restore, maybe to much, you can change it
+
+Prior versions: thanks all who colaborate with https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel && https://github.com/hestiacp/hestiacp/commits/main/bin/v-import-cpanel
+Original based on https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/blob/master/sk-cpanel-importer-05.sh
