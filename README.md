@@ -18,7 +18,14 @@ v-import-cpanel-v2
 - Fix Bug, continue restoring either if php version not exists, just asign default.
 - Added now quota for mail account asigned as in cpanel account
 - By default disabled option to search and unzip compressed mails , in script change FIND_GZIPED_MAILS=no to yes to activate search for compressed mails, this function is too slowin big emails accounts
-- Added option to detect disk space, we not want unzip 30 GB to get insufficient storage, Check 2.5x space more than backup size to restore, maybe to much, you can change it 
+- Added option to detect disk space, we not want unzip 30 GB to get insufficient storage, Check 2.5x space more than backup size to restore, maybe to much, you can change it
+- Added version header to script
+- Version 2.0.1:
+- Now can run v-import-cpanel versino to know if runing latest
+- Added rebuild new hestia user statistics
+- Fix error when mailbox_format.cpanel not exists
+- Parked domain added as DNS domain
+
 TODO:
 - Check if mails are in maildir format or mdbox
 - Restore DKIM really need restore it ? if local mail we can generate new one.
