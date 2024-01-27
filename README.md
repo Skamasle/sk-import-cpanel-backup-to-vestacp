@@ -3,33 +3,11 @@ v-import-cpanel-v2 is a copy of https://github.com/hestiacp/hestiacp/blob/main/b
 Make some changes for testing, then make some pull request in oficial repo
 
 v-import-cpanel-v2
-- Add progress when restoring mails
-- Add progress when unzip archive, good to know if script do something
-- Fix EA-PHP paths in cron job / replace by hestiacp paths or default if not exists
-- Fix Bug when restore addon domains
-- Fix Bug when restore databases
-- Added option to change cpanel user ( beta script also try fix PHP configuration files, database prefix, script search for most common configuration files settings.php. wp-config.php and fix DB_PREFIX_)
-- Added options to restore if user alredy exist ( beta we try not overwrite existing data need more test )
-- Added Option to restore only databases, Only emails or Only domains
-- Now we can restore parked domains and parked domain mails.
-- Improve output, change all ECHOs for printf
-- Change VARS to UPERCASE ( 95% completed )
-- Added option to restore SSL ( need more tests )
-- Fix Bug, continue restoring either if php version not exists, just asign default.
-- Added now quota for mail account asigned as in cpanel account
-- By default disabled option to search and unzip compressed mails , in script change FIND_GZIPED_MAILS=no to yes to activate search for compressed mails, this function is too slowin big emails accounts
-- Added option to detect disk space, we not want unzip 30 GB to get insufficient storage, Check 2.5x space more than backup size to restore, maybe to much, you can change it
-- Added version header to script
-- Version 2.0.1:
-- Now can run v-import-cpanel versino to know if runing latest
-- Added rebuild new hestia user statistics
-- Fix error when mailbox_format.cpanel not exists
-- Parked domain added as DNS domain
-
 TODO:
 - Check if mails are in maildir format or mdbox
 - Restore DKIM really need restore it ? if local mail we can generate new one.
 - Need check MX restore optión again.
+- More test with diferent backups
 
 
 Import cPanel backup in vestacp
