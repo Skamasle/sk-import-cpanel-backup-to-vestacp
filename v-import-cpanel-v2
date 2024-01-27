@@ -15,7 +15,7 @@
 # Not all need this, but if needed enable here, 
 # For NOW disabled by default too slow option in big mail accounts
 # Function need be rebuilded
-VERSION=2.0.1
+VERSION=2.0.2
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
 fi
@@ -118,6 +118,7 @@ elif [[ $TYPE == MAIL ]]; then
 fi
 }
 
+
 printf "%sINFO:%s Checking provided file...\n" "$GREEN" "$COLOROFF"
 
 if ! file "$CPANEL_BACKUP" | grep -q -c "gzip compressed data,"; then
@@ -218,7 +219,7 @@ if [[ $NO_CREATE_USER != yes ]]; then
     update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
     $BIN/v-rebuild-user "$NEW_USER"
 fi
-
+USER_IP=$($BIN/v-list-user-ips $NEW_USER plain | awk '{ print $1 }')
 restore_databases(){
 # Restore databases
 mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
@@ -371,7 +372,7 @@ if [ -s pds ]; then
         printf "%sINFO:%s Procesing parked domain: %s\n" "$GREEN" "$COLOROFF" "$parked"
         PARKEDFOR=$(cat userdata/cache.json |  jq --arg domain "$PARKED" '.[$domain][3]' |sed 's/"//g')
         $BIN/v-add-web-domain-alias $NEW_USER $PARKEDFOR $PARKED
-        $BIN/v-add-dns-domain $NEW_USER $PARKED
+        $BIN/v-add-dns-domain $NEW_USER $PARKED $USER_IP
     done
 else
 
