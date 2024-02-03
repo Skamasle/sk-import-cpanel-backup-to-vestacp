@@ -1,0 +1,254 @@
+#!/bin/bash
+# Import Backup From Centos Web Panel
+# TODO:
+# Mail Restoring
+VERSION=0.1-BETA
+
+if [[ $1 == version ]] || [[ $1 == --version ]]; then
+    printf "Version: %s\n" "$VERSION"
+    exit
+fi
+
+# shellcheck source=/usr/local/hestia/func/main.sh
+source $HESTIA/func/main.sh
+# shellcheck source=/etc/hestiacp/hestia.conf
+source /etc/hestiacp/hestia.conf
+# load config file
+source_conf "$HESTIA/conf/hestia.conf"
+
+GREEN=$(tput setaf 2)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+COLOROFF=$(tput sgr0)
+
+if [ $# -lt 1 ]; then
+	echo "usage: bash $0 cpanel-backup.tar.gz"
+	echo "or"
+	echo "usage: bash $0 cpanel-backup.tar.gz ALL # Default opción is ALL can be omited "
+    echo "usage: bash $0 cpanel-backup.tar.gz MAIL DB DOMAIN CRON MX"
+	exit 1
+fi
+
+if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ]; then
+    printf "%sWARNING:%s rsync not installed, try install it\n" "$YELLOW" "$COLOROFF"
+    printf "%sWARNING:%s This script need: rsync, file" "$YELLOW" "$COLOROFF"
+    printf "%sINFO:%s Run: apt-get install rsync file" "$GREEN" "$COLOROFF"
+    exit 3
+fi
+
+if [ -f "$1" ]; then
+	CWP_BACKUP="$1"
+fi
+if [ -z "$BACKUP_TEMP" ]; then
+	BACKUP_TEMP=$BACKUP
+else
+	printf "%sWARNING:%s File does not exists\n" "$YELLOW" "$COLOROFF"
+	exit 1
+fi
+# Lets check if have space in home to restore all
+BACKUP_SIZE=$(stat -c %s "$CWP_BACKUP")
+NEED_SPACE=$((BACKUP_SIZE * 2 + BACKUP_SIZE / 2))
+HOME_SPACE=$(df -B1 /home | awk 'NR==2 {print $4}')
+if [[ "$HOME_SPACE" -ge "$NEED_SPACE" ]]; then
+    printf "%sINFO:%s Detected sufficient space to restore the backup.\n" "$GREEN" "$COLOROFF" 
+else
+    printf "%sERROR:%s Dtected insufficient free space to import the backup, need %s bytes have %s bytes in home\n" "$RED" "$COLOROFF" "$NEED_SPACE" "$HOME_SPACE"
+    exit 4
+fi
+
+# Creating temporary directory
+TMPDIR=$(mktemp -p "$BACKUP_TEMP" -d)
+printf "%sINFO:%s TMPDIR is %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
+
+cleanup_and_exit() {
+    EXIT_CODE=$1
+    printf "%sINFO:%s Exit and clean %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
+
+    if [ -d "$TMPDIR" ]; then
+        rm -rf "$TMPDIR"
+    fi
+    exit "$EXIT_CODE"
+}
+trap 'cleanup_and_exit $?' EXIT
+
+printf "%sINFO:%s Checking provided file...\n" "$GREEN" "$COLOROFF"
+
+if ! file "$CWP_BACKUP" | grep -q -c "gzip compressed data,"; then
+	printf "%sError 3 not-gzip - no stantard cpanel backup provided of file not installed ( Try yum install file, or apt-get install file )%s\n" "$RED" "$COLOROFF"
+	exit 3
+fi
+
+printf "%sINFO:%s OK - Gzipped File Detected, Initiating Extraction:\n" "$GREEN" "$COLOROFF"
+
+pv "$CWP_BACKUP" |  tar xz  -C "$TMPDIR"
+
+if [[ $? -eq 0 ]]; then
+	printf "%sINFO:%s Backup extracted without errors...\n" "$GREEN" "$COLOROFF"
+else
+	printf "%sERROR!! %s on backup extraction, check your file, try extract it manually\n"  "$RED" "$COLOROFF"
+	printf "%sINFO:%s Removing %s\n" "$GREEN" "$COLOROFF" "$TMPDIR"
+	exit 1
+fi
+
+cd $TMPDIR
+
+MAIN_DIR=$(pwd)
+printf "%sINFO:%s Access tmp directory, working DIR is %s\n" "$GREEN" "$COLOROFF" "$MAIN_DIR"
+
+sed -i 's/\\//g' conf.json contentBackup.json  domains.json subdomains.json
+CONF_JSON=$(cat conf.json)
+MAIN_DOMAIN=$(echo $CONF_JSON | jq -r '.domain')
+MYSQL_DATABASES_JSON=CHECK
+if [[ ! -z  contentBackup.json ]]; then
+    MYSQL_DATABASES_JSON=$(cat contentBackup.json)
+    MYSQL_DATABASES_JSON=$(echo $MYSQL_DATABASES_JSON | jq -r '.mysql[]')
+fi
+if [[ $MYSQL_DATABASES_JSON != CHECK ]]; then 
+    NEW_USER=$(echo $MYSQL_DATABASES_JSON | tr '_' ' ' | awk '{ print $1 }')
+else
+    NEW_USER=$2
+fi
+printf "%sINFO:%s Get User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+CHECK_SYSUSER=$(cut -f 1 -d : /etc/passwd | grep "^$NEW_USER$")
+if [ -n "$CHECK_SYSUSER" ] || [ -e "$HESTIA/data/users/$NEW_USER" ]; then
+    if [[ $NO_CHECK_USER == ON ]]; then
+        printf "%sWarning:%s %s Alredy exists in this server, but you select import backup in any way.\n" "$YELLOW" "$COLOROFF" "$NEW_USER"
+        NO_CREATE_USER=yes
+    else
+	    check_result "$E_EXISTS" "user $user exists"
+        printf "%sERROR:%s User allready exists\n"  "$RED" "$COLOROFF"
+	    exit 2
+	fi
+fi
+
+TMP_PASSWD=$(generate_password)
+EMAIL=$(echo $CONF_JSON | jq -r '.email')
+if [ -z "$EMAIL" ]; then
+	# Hestia does not like email to be set to an empty string
+	EMAIL="info@"$(hostname)
+fi
+$BIN/v-add-user "$NEW_USER" "$TMP_PASSWD" "$EMAIL" "default"
+if [ "$?" -ne 0 ]; then
+	printf "\n%sERROR%s: Unable to create user" "$GREEN" "$COLOROFF"
+	exit 1
+fi
+# Restore user password
+printf "\n%sINFO%s: Importing user password.\n" "$GREEN" "$COLOROFF"
+update_user_value "$NEW_USER" 'MD5' "$(cat passwd)"
+$BIN/v-rebuild-user "$NEW_USER"
+
+is_there() {
+unset IS_THERE
+OBJECT=$1
+TYPE=$2
+USER=$3
+if [[ $TYPE == DB ]]; then
+    if $BIN/v-list-databases $USER | grep -w -q $OBJECT ; then
+        IS_THERE=yes
+    fi
+elif [[ $TYPE == DOMAIN ]]; then
+    if $BIN/v-list-web-domains $USER | grep -w -q "$OBJECT" ; then
+        IS_THERE=yes
+    fi
+elif [[ $TYPE == MAIL ]]; then
+    if $BIN/v-list-mail-accounts $USER | grep -w -q "$OBJECT" ; then
+        IS_THERE=yes
+    fi
+
+fi
+}
+
+restore_databases(){
+# Restore databases
+mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
+sed -i 's/\\//g' mysql/user_grants.sql
+sed -i "s/\`/'/g" mysql/user_grants.sql
+printf "\n%sINFO%s: Start with Databases\n" "$GREEN" "$COLOROFF"
+## User / Password
+grep "GRANT USAGE ON" mysql/user_grants.sql | awk -F "'" '{ print $2, $6 }' | uniq > user_password_db
+# User and database
+grep "GRANT" mysql/user_grants.sql | grep -v "USAGE ON" > u_db
+cat u_db | awk -F "'" '{ print $2, $4 }' | sort | uniq > uni_u_db
+# Fix mysql 8 to mariadb problems here:
+sed -i "s/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g" mysql/*
+mysql -e "SHOW DATABASES" > server_dbs
+for db in $MYSQL_DATABASES_JSON; do
+	grep -w $db server_dbs
+	if [ $? == "1" ]; then
+		printf "%sINFO%s: Create and import %s\n" "$GREEN" "$COLOROFF" "${db}"
+        mysql -e "CREATE DATABASE $db"
+		mysql ${db} < mysql/${db}.sql
+	else
+		printf "%sERROR%s: Cant import database %s alredy exists in mysql server\n" "$RED" "$COLOROFF" $db 
+	fi
+done
+
+time=$(echo "$time_n_date" | cut -f 1 -d \ )
+date=$(echo "$time_n_date" | cut -f 2 -d \ )
+
+cat uni_u_db | while read db userdb; do
+	grep -w $userdb user_password_db | while read user end_user_pass; do
+		if [ "$userdb" == "$user" ] && [ "$userdb" != "$NEW_USER" ]; then
+			printf "DB='%s' DBUSER='%s' MD5='%s' HOST='localhost' TYPE='mysql' CHARSET='UTF8' U_DISK='0' SUSPENDED='no' TIME='%s' DATE='%s'\n" \
+           "$db" "$userdb" "$end_user_pass" "$time" "$data" >> /usr/local/hestia/data/users/"$NEW_USER"/db.conf
+		fi
+	done
+done
+
+# Leave hestia restore passwords and create users
+printf "%sINFO:%s Rebuild databases files for %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+$BIN/v-rebuild-databases $NEW_USER
+## end mysql
+}
+
+restore_databases
+
+domain_import() {
+DOMAIN=$1
+BACKUP_PATH=$2
+is_there "$DOMAIN" "DOMAIN" "$NEW_USER"
+    if [[ IS_THERE != yes ]]; then  
+        printf "%sINFO:%s Importing domain: %s \n" "$GREEN" "$COLOROFF" "$DOMAIN"
+        $BIN/v-add-domain "$NEW_USER" "$DOMAIN"
+		rm -f /home/$NEW_USER/web/$DOMAIN/public_html/index.html
+		rm -f /home/$NEW_USER/web/$DOMAIN/public_html/robots.txt
+		SYNC_COUNT=0
+		rsync -av $BACKUP_PATH /home/$NEW_USER/web/$DOMAIN/public_html 2>&1 \
+			| while read file_dm; do
+			    SYNC_COUNT=$(($SYNC_COUNT + 1))
+			    printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
+			    done
+	    printf "\n"
+		chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$DOMAIN/public_html
+		chown $NEW_USER:www-data /home/$NEW_USER/web/$DOMAIN/public_html
+		chmod 751 /home/$NEW_USER/web/$DOMAIN/public_html
+   	else
+  	    printf "%sWARNING:%s Domain %s already added, skip..\n" "$YELLOW" "$COLOROFF" "$CP_DOMAIN"
+   	fi
+}
+
+printf "\n%sINFO:%s Start Importing Domains\n" "$GREEN" "$COLOROFF"
+MAIN_DOMAIN_JSON=$(cat conf.json)
+MAIN_DOMAIN=$(echo $MAIN_DOMAIN_JSON| jq -r '.domain')
+domain_import $MAIN_DOMAIN "home/public_html"
+######### TODO ##########
+## Corregir  $DOM_PATH para enviar solo la ruta del backup home/dominio en vez de home/usuario/dominio
+if [[ ! -z domains.json ]]; then
+    ADD_ON_DOMAIN_JSON=$(cat domains.json)
+    for JSON_OB in $(echo $ADD_ON_DOMAIN_JSON | jq -c '.[]'); do
+       DOMAIN=$(echo $JSON_OB | jq -r '.domain')
+       DOM_PATH=$(echo $JSON_OB | jq -r '.domain_path')
+       DOM_PATH=$(echo $DOM_PATH | sed -e "s#/home/$NEW_USER/##" )
+       domain_import "$DOMAIN" "home/${DOM_PATH}"
+    done
+fi
+if [[ ! -z subdomains.json ]]; then
+    SUB_DOMAIN_JSON=$(cat subdomains.json)
+    for JSON_OB in $(echo $SUB_DOMAIN_JSON | jq -c '.[]'); do
+        SUB_DOMAIN=$(echo $JSON_OB | jq -r '.subdomain')
+        DOMAIN=$(echo $JSON_OB | jq -r '.domain')
+        DOM_PATH=$(echo $JSON_OB | jq -r '.path')
+        DOM_PATH=$(echo $DOM_PATH | sed -e "s#/home/$NEW_USER/##" )
+       domain_import "${SUB_DOMAIN}.${DOMAIN}" "home/${DOM_PATH}"
+    done
+fi
