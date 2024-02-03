@@ -15,9 +15,10 @@
 # Not all need this, but if needed enable here, 
 # For NOW disabled by default too slow option in big mail accounts
 # Function need be rebuilded
-VERSION=2.0.2
+VERSION=2.0.3
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
+    exit
 fi
 FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
@@ -78,7 +79,7 @@ HOME_SPACE=$(df -B1 /home | awk 'NR==2 {print $4}')
 if [[ "$HOME_SPACE" -ge "$NEED_SPACE" ]]; then
     printf "%sINFO:%s Detected sufficient space to restore the backup.\n" "$GREEN" "$COLOROFF" 
 else
-    printf "%sERROR:%s Dtected insufficient free space to restore the backup, need %s bytes have %s bytes in home\n" "$RED" "$COLOROFF" "$NEED_SPACE" "$HOME_SPACE"
+    printf "%sERROR:%s Dtected insufficient free space to import the backup, need %s bytes have %s bytes in home\n" "$RED" "$COLOROFF" "$NEED_SPACE" "$HOME_SPACE"
     exit 4
 fi
 
@@ -142,7 +143,7 @@ cd $TMPDIR/*
 if [[ $CHANGE_CP_USER == yes ]]; then
     MAIN_DOMAIN1=$(grep main_domain userdata/main | cut -d " " -f2)
     CP_USER=$(grep "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
-    printf "%sWARNING:%s You select change user, cpanel backup user is: >> %s <<  will be restored in >> %s <<\n" "$YELLOW" "$COLOROFF" "$CP_USER" "$NEW_USER"
+    printf "%sWARNING:%s You select change user, cpanel backup user is: >> %s <<  will be imported in >> %s <<\n" "$YELLOW" "$COLOROFF" "$CP_USER" "$NEW_USER"
     #Convert backup prefix
     sed -i "s/user: $CP_USER/user: $NEW_USER/" userdata/*
     sed -i 's/\\//g' mysql.sql
@@ -215,7 +216,7 @@ if [[ $NO_CREATE_USER != yes ]]; then
     	exit 1
     fi
     # Restore user password
-    printf "\n%sINFO%s: Restoring user password.\n" "$GREEN" "$COLOROFF"
+    printf "\n%sINFO%s: Importing user password.\n" "$GREEN" "$COLOROFF"
     update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
     $BIN/v-rebuild-user "$NEW_USER"
 fi
@@ -245,11 +246,11 @@ mysql -e "SHOW DATABASES" > server_dbs
 for db in $DB_LIST; do
 	grep -w $db server_dbs
 	if [ $? == "1" ]; then
-		printf "%sINFO%s: Create and restore %s\n" "$GREEN" "$COLOROFF" "${db}"
+		printf "%sINFO%s: Create and import %s\n" "$GREEN" "$COLOROFF" "${db}"
 		mysql < mysql/${db}.create
 		mysql ${db} < mysql/${db}.sql
 	else
-		printf "%sERROR%s: Cant restore database %s alredy exists in mysql server\n" "$RED" "$COLOROFF" $db 
+		printf "%sERROR%s: Cant import database %s alredy exists in mysql server\n" "$RED" "$COLOROFF" $db 
 	fi
 done
 
@@ -272,7 +273,7 @@ $BIN/v-rebuild-databases $NEW_USER
 }
 
 restore_domains(){
-printf "\n%sINFO:%s Start Restoring Domains\n" "$GREEN" "$COLOROFF"
+printf "\n%sINFO:%s Start Importing Domains\n" "$GREEN" "$COLOROFF"
 # ADDON_DOMAINSs=$(cat addons | cut -d "=" -f1)
 sed -i 's/_/./g; s/=/ /g' addons
 printf "%sINFO:%s Converting addons domains, subdomains and some other fun\n" "$GREEN" "$COLOROFF"
@@ -301,7 +302,7 @@ function get_domain_path() {
     			rsync -av homedir/$path/ /home/$NEW_USER/web/$CP_DOMAIN/public_html 2>&1 \
     				| while read file_dm; do
     					SYNC_COUNT=$(($SYNC_COUNT + 1))
-    					printf "\r%sINFO:%s Restoring -- %s  files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
+    					printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
     				done
     		    printf "\n"
     			chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$CP_DOMAIN/public_html
@@ -324,14 +325,14 @@ if [[ IS_THERE != yes ]]; then
     if [ ! -e exclude_path ]; then
 	    touch exclude_path
     fi
-    printf "%sINFO:%s Restore main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
+    printf "%sINFO:%s Importing main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
     rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/index.html
     rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/robots.txt
 
     rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
     	| while read file_dm; do
 	    	SYNC_COUNT=$(($SYNC_COUNT + 1))
-            printf "\r%sINFO:%s Restoring -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
+            printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
     	done
     printf "\n"
     chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
@@ -376,7 +377,7 @@ if [ -s pds ]; then
     done
 else
 
-    printf "%sINFO:%sNo parked domains found\n" "$GREEN" "$COLOROFF"
+    printf "%sINFO:%s No parked domains found\n" "$GREEN" "$COLOROFF"
 
 fi
 
@@ -418,7 +419,7 @@ else
 fi
 }
 restore_mail() {
-printf "\n%sINFO:%s Start Restoring Mails\n" "$GREEN" "$COLOROFF"
+printf "\n%sINFO:%s Start Importing Mails\n" "$GREEN" "$COLOROFF"
 cd homedir/mail
 # We can convert this but need some backups with mdbox for tests.
 if [ -e "mailbox_format.cpanel" ] && ! grep -q 'maildir' "mailbox_format.cpanel";then
@@ -428,7 +429,7 @@ fi
 for FOLDER in *; do
 	if [ -d "$FOLDER" ]; then
 		if [[ "$FOLDER" != "cur" && "$FOLDER" != "new" && "$FOLDER" != "tmp" ]]; then
-			printf "%sINFO:%s Restore mails for domain: %s \n" "$GREEN" "$COLOROFF" $FOLDER
+			printf "%sINFO:%s Importing mails for domain: %s \n" "$GREEN" "$COLOROFF" $FOLDER
             # This is needed as parked domains have emails but not added 
             if ! $BIN/v-list-mail-domains $NEW_USER plain | awk '{ print $1 }' |grep -q "^${FOLDER}$"; then
 	        	printf "%sINFO:%s Found parked domain %s adding as mail domain in Hestia\n" "$GREEN" "$COLOROFF" "$FOLDER"
@@ -437,7 +438,7 @@ for FOLDER in *; do
 			cd $FOLDER
 			MAIL_ACCOUNT_COUNT=$(find . -maxdepth 1 -mindepth 1 -type d \( ! -name cur ! -name new ! -name tmp \) | wc -l)
 			if [ "$MAIL_ACCOUNT_COUNT" -eq 0 ]; then
-				printf "%sINFO:%s No mail accounts to restore for domain%s\n" "$GREEN" "$COLOROFF" "$FOLDER"
+				printf "%sINFO:%s No mail accounts to import for domain%s\n" "$GREEN" "$COLOROFF" "$FOLDER"
 				cd ..
 				continue
 			fi
@@ -453,9 +454,12 @@ for FOLDER in *; do
 				rsync -av $MAIL_ACCOUNT /home/$NEW_USER/mail/$FOLDER/ | while read line
 				    do
 				    ((COUNT++))
-				    printf "\r%sINFO:%s Restoring: %s mails" "$GREEN" "$COLOROFF" "$COUNT"
+				    printf "\r%sINFO:%s Importing: %s mails in %s@%s" "$GREEN" "$COLOROFF" "$COUNT" "$MAIL_ACCOUNT" "$FOLDER"
 				    done
 				printf "\n"
+				printf "\r%sINFO:%s Fix User/Gruop/Perms in %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
+				find  /home/$NEW_USER/mail/$FOLDER/ -type f -exec chmod 660 {} \;
+				find  /home/$NEW_USER/mail/$FOLDER/ -type d -exec chmod 700 {} \;
 				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$FOLDER/
                 if [[ $FIND_GZIPED_MAILS == yes ]]; then
 				    # Decompress gzipped emails
@@ -535,7 +539,7 @@ fi
 ##################
 # Cron Jobs
 restore_cron() {
-printf "\n%sINFO:%s Start Restoring Cron Jobs For User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+printf "\n%sINFO:%s Start Importing Cron Jobs For User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 CRON_DIR="$MAIN_DIR/cron"
 cd "$CRON_DIR"
 CRON_FILE="${NEW_USER}"
@@ -579,7 +583,7 @@ if [ -f "$CRON_FILE" ] && [ -s "$CRON_FILE" ]; then
         fi
 		$BIN/v-add-cron-job $NEW_USER "$MIN" "$HOUR" "$DAY" "$MONTH" "$DOW" "$CMD"
 	done < "$CRON_FILE"
-	printf "%sINFO:%s Cron jobs restored for user %s.\n" "$GREEN" "$COLOROFF" "$NEW_USER"
+	printf "%sINFO:%s Cron jobs imported for user %s.\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 else
 	printf "%sINFO:%s No cron jobs file found or it is empty for user %s. \n" "$GREEN" "$COLOROFF" "$NEW_USER"
 fi
@@ -627,6 +631,6 @@ done
 printf "%sINFO:%s Rebuild Statistics for user %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 $BIN/v-update-user-stats $NEW_USER
 
-printf "\n%sINFO:%s cPanel Backup restored\n" "$GREEN" "$COLOROFF"
+printf "\n%sINFO:%s cPanel Backup Imported\n" "$GREEN" "$COLOROFF"
 printf "%sINFO:%s Review your content and report any fail\n" "$GREEN" "$COLOROFF"
 exit 0
