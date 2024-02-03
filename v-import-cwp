@@ -1,8 +1,8 @@
 #!/bin/bash
 # Import Backup From Centos Web Panel
 # TODO:
-# Mail Restoring
-VERSION=0.1-BETA
+# Restore CRONs and some tests
+VERSION=0.2-BETA
 
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
@@ -226,13 +226,12 @@ is_there "$DOMAIN" "DOMAIN" "$NEW_USER"
   	    printf "%sWARNING:%s Domain %s already added, skip..\n" "$YELLOW" "$COLOROFF" "$CP_DOMAIN"
    	fi
 }
-
+start_domain() {
 printf "\n%sINFO:%s Start Importing Domains\n" "$GREEN" "$COLOROFF"
 MAIN_DOMAIN_JSON=$(cat conf.json)
 MAIN_DOMAIN=$(echo $MAIN_DOMAIN_JSON| jq -r '.domain')
 domain_import $MAIN_DOMAIN "home/public_html"
-######### TODO ##########
-## Corregir  $DOM_PATH para enviar solo la ruta del backup home/dominio en vez de home/usuario/dominio
+
 if [[ ! -z domains.json ]]; then
     ADD_ON_DOMAIN_JSON=$(cat domains.json)
     for JSON_OB in $(echo $ADD_ON_DOMAIN_JSON | jq -c '.[]'); do
@@ -249,6 +248,55 @@ if [[ ! -z subdomains.json ]]; then
         DOMAIN=$(echo $JSON_OB | jq -r '.domain')
         DOM_PATH=$(echo $JSON_OB | jq -r '.path')
         DOM_PATH=$(echo $DOM_PATH | sed -e "s#/home/$NEW_USER/##" )
-       domain_import "${SUB_DOMAIN}.${DOMAIN}" "home/${DOM_PATH}"
+        domain_import "${SUB_DOMAIN}.${DOMAIN}" "home/${DOM_PATH}"
     done
 fi
+}
+
+start_domain
+quota_convert() {
+BYTES=$1
+if [[ $BYTES == 0 ]] || [[ $BYTES == -1 ]] || [[ $BYTES == unlimited ]]; then
+    QUOTA=unlimited
+else
+    QUOTA=$(echo "scale=0; $BYTES / 1024 / 1024" | bc)
+fi
+}
+restore_mail() {
+sed -i '/^$/d' postfix/mailbox.sql
+printf "\n%sINFO:%s Start Importing Mails\n" "$GREEN" "$COLOROFF"
+
+cat postfix/mailbox.sql | tr '()""' ' ' | awk '{ print $8 , $11 , $13 , $15 , $17}' | while read -r PASSWORD MAIL_PATH QUOTA MAIL_ACCOUNT MAIL_DOMAIN
+do
+    printf "%sINFO:%s Importing mails for domain: %s \n" "$GREEN" "$COLOROFF" $MAIL_DOMAIN
+    MAIL_ACCOUNT_COUNT=$(find . -maxdepth 1 -mindepth 1 -type d \( ! -name cur ! -name new ! -name tmp \) | wc -l)
+    printf "%sINFO:%s Import mail account: %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$MAIL_DOMAIN"
+    # Doesn't really matter but we don't know the unhashed one
+    TMP_PASSWD=$(generate_password)
+    quota_convert $QUOTA
+    $BIN/v-add-mail-account $NEW_USER $MAIL_DOMAIN $MAIL_ACCOUNT $TMP_PASSWD $QUOTA
+    COUNT="0"
+    if [[ -d "vmail/${MAIL_PATH}" ]]; then
+        rsync -av vmail/${MAIL_PATH} /home/$NEW_USER/mail/${MAIL_DOMAIN}/${MAIL_ACCOUNT} | while read line
+            do
+                ((COUNT++))
+                printf "\r%sINFO:%s Importing: %s mails in %s@%s" "$GREEN" "$COLOROFF" "$COUNT" "$MAIL_ACCOUNT" "$MAIL_DOMAIN"
+            done
+        printf "\n"
+    else
+        printf "%sWARN%s: Account %s@%s exist but no have email\n" "$YELLOW" "$COLOROFF" "$MAIL_ACCOUNT" "$MAIL_DOMAIN"
+    fi
+    find  /home/$NEW_USER/mail/$MAIL_DOMAIN/ -type f -exec chmod 660 {} \;
+    find  /home/$NEW_USER/mail/$MAIL_DOMAIN/ -type d -exec chmod 700 {} \;
+    chown -R $NEW_USER:mail /home/$NEW_USER/mail/$MAIL_DOMAIN/
+    find /home/$NEW_USER/mail/$FOLDER -type f -name 'dovecot*' -delete
+	NEW_LINE2="ACCOUNT='${MAIL_ACCOUNT}' ALIAS='' AUTOREPLY='no' FWD='' FWD_ONLY='' MD5='$PASSWORD' QUOTA='$QUOTA' U_DISK='0' SUSPENDED='no' TIME='$time' DATE='$date'"
+    escaped=$(printf '%s\n' "$NEW_LINE" | sed -e 's/[\/&]/\\&/g')
+    escaped2=$(printf '%s\n' "$NEW_LINE2" | sed -e 's/[\/&]/\\&/g')
+    sed -i "s/^${MAIL_ACCOUNT}:.*/$escaped/g" /home/${NEW_USER}/conf/mail/${MAIL_DOMAIN}/passwd
+    sed -i "s/^ACCOUNT='${MAIL_ACCOUNT}.*/$escaped2/g" /usr/local/hestia/data/users/${NEW_USER}/mail/${MAIL_DOMAIN}.conf
+	$BIN/v-rebuild-mail-domain $NEW_USER $MAIL_DOMAIN
+done
+}
+
+restore_mail
