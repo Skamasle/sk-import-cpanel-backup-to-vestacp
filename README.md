@@ -2,14 +2,27 @@
 v-import-cpanel-v2 is a copy of https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
 Make some changes for testing, then make some pull request in oficial repo
 
-v-import-cpanel-v2
-TODO:
-- Check if mails are in maildir format or mdbox
-- Restore DKIM really need restore it ? if local mail we can generate new one.
-- Need check MX restore optión again.
-- More test with diferent backups
+# >>>> v-import-cpanel-v2 <<<<
+ Check CHANGELOG
+ v-import-cpanel-v2 backup.tar.gz
+ v-import-cpanel-v2 backup.tar.gz ALL 
+ v-import-cpanel-v2 backup.tar.gz DOMAIN
+ v-import-cpanel-v2 backup.tar.gz MAIL
+ v-import-cpanel-v2 backup.tar.gz DB
+# Import even if the user exists on the server
+ v-import-cpanel-v2 backup.tar.gz ALL NO-CHECK-USER
+# Change destination user ( BETA ) if cpanel account have any user ex: admin and you want restore it in admin2 or any other format is: RESTORE-IN-USER=user )
+v-import-cpanel-v2 backup.tar.gz ALL RESTORE-IN-USER=admin2
+
+# >>>> v-import-cwp <<<<
+Import backups from Centos Web Panel
+CHECK CHANGELOG-CWP
+v-import-cwp bacackup.tar.gz
+# if you not have databases we cant get user from backup, we need a user
+v-import-cwp bacackup.tar.gz NEW_USER
 
 
+# OLD
 Import cPanel backup in vestacp
 
 Beta 0.5.3
