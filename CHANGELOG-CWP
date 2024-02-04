@@ -1,0 +1,7 @@
+v-import-cwp change log ( importer for centos web panel )
+
+import-cwp 0.2-BETA
+- Import Domains
+- Impor User password
+- Import Emails and password
+- Import databases ( need more tests )
