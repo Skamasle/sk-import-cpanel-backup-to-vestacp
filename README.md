@@ -4,14 +4,23 @@ Make some changes for testing, then make some pull request in oficial repo
 
 # >>>> v-import-cpanel-v2 <<<<
  Check CHANGELOG
+ 
  v-import-cpanel-v2 backup.tar.gz
+ 
  v-import-cpanel-v2 backup.tar.gz ALL 
+ 
  v-import-cpanel-v2 backup.tar.gz DOMAIN
+ 
  v-import-cpanel-v2 backup.tar.gz MAIL
+ 
  v-import-cpanel-v2 backup.tar.gz DB
+ 
 # Import even if the user exists on the server
+
  v-import-cpanel-v2 backup.tar.gz ALL NO-CHECK-USER
+ 
 # Change destination user ( BETA ) if cpanel account have any user ex: admin and you want restore it in admin2 or any other format is: RESTORE-IN-USER=user )
+
 v-import-cpanel-v2 backup.tar.gz ALL RESTORE-IN-USER=admin2
 
 # >>>> v-import-cwp <<<<
