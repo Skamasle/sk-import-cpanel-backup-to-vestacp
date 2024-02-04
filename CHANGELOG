@@ -1,10 +1,6 @@
-import-cwp 0.2-BETA
-- Import Domains
-- Impor User password
-- Import Emails and password
-- Import databases ( need more tests )
+v-import-cpanel 
 
-import-cpanel 2.0.3
+2.0.3
 - Fix mail account permisions after restore ( dirs comes with 751, hestia need 700, files fixed to 660)
 2.0.2
 - Bug fix when added parked domain
