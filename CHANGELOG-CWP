@@ -1,5 +1,8 @@
 v-import-cwp change log ( importer for centos web panel )
 
+import-cwp 0.3-BETA
+- Fix path when restore public_html reported by @coriaweb https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/issues/18
+
 import-cwp 0.2-BETA
 - Import Domains
 - Impor User password
