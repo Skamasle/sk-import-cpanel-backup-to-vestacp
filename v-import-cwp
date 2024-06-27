@@ -213,7 +213,7 @@ is_there "$DOMAIN" "DOMAIN" "$NEW_USER"
 		rm -f /home/$NEW_USER/web/$DOMAIN/public_html/index.html
 		rm -f /home/$NEW_USER/web/$DOMAIN/public_html/robots.txt
 		SYNC_COUNT=0
-		rsync -av $BACKUP_PATH /home/$NEW_USER/web/$DOMAIN/public_html 2>&1 \
+		rsync -av "${BACKUP_PATH}/" /home/$NEW_USER/web/$DOMAIN/public_html 2>&1 \
 			| while read file_dm; do
 			    SYNC_COUNT=$(($SYNC_COUNT + 1))
 			    printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
