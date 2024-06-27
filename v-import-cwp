@@ -2,7 +2,7 @@
 # Import Backup From Centos Web Panel
 # TODO:
 # Restore CRONs and some tests
-VERSION=0.2-BETA
+VERSION=0.3-BETA
 
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
