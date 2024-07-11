@@ -2,7 +2,7 @@
 # Import Backup From Centos Web Panel
 # TODO:
 # Restore CRONs and some tests
-VERSION=0.3-BETA
+VERSION=0.2-BETA
 
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
@@ -231,6 +231,7 @@ printf "\n%sINFO:%s Start Importing Domains\n" "$GREEN" "$COLOROFF"
 MAIN_DOMAIN_JSON=$(cat conf.json)
 MAIN_DOMAIN=$(echo $MAIN_DOMAIN_JSON| jq -r '.domain')
 domain_import $MAIN_DOMAIN "home/public_html"
+set_php_version "$MAIN_DOMAIN"
 
 if [[ ! -z domains.json ]]; then
     ADD_ON_DOMAIN_JSON=$(cat domains.json)
@@ -239,6 +240,7 @@ if [[ ! -z domains.json ]]; then
        DOM_PATH=$(echo $JSON_OB | jq -r '.domain_path')
        DOM_PATH=$(echo $DOM_PATH | sed -e "s#/home/$NEW_USER/##" )
        domain_import "$DOMAIN" "home/${DOM_PATH}"
+       set_php_version "$DOMAIN"
     done
 fi
 if [[ ! -z subdomains.json ]]; then
@@ -249,11 +251,40 @@ if [[ ! -z subdomains.json ]]; then
         DOM_PATH=$(echo $JSON_OB | jq -r '.path')
         DOM_PATH=$(echo $DOM_PATH | sed -e "s#/home/$NEW_USER/##" )
         domain_import "${SUB_DOMAIN}.${DOMAIN}" "home/${DOM_PATH}"
+        set_php_version "${SUB_DOMAIN}.${DOMAIN}"
     done
 fi
 }
 
+# Extract PHP version and set it for the domain
+set_php_version() {
+    DOMAIN=$1
+    printf "\n%sINFO:%s Setting PHP version for domain %s\n" "$GREEN" "$COLOROFF" "$DOMAIN"
+    CONF_FILE="$TMPDIR/home/.conf/webservers/${DOMAIN}.conf"
+    
+    if [ -f "$CONF_FILE" ]; then
+        PHP_FPM_VERSION=$(jq -r '.["php-fpm_ver"]' "$CONF_FILE")
+        HESTIA_PHP_VERSION="PHP-${PHP_FPM_VERSION:0:1}_${PHP_FPM_VERSION:1}"
+
+        if $BIN/v-list-web-templates-backend | grep -qw "$HESTIA_PHP_VERSION"; then
+            printf "Setting PHP version to %s for %s under user %s\n" "$HESTIA_PHP_VERSION" "$DOMAIN" "$NEW_USER"
+            $BIN/v-change-web-domain-backend-tpl "$NEW_USER" "$DOMAIN" "$HESTIA_PHP_VERSION"
+            if [ $? -ne 0 ]; then
+                printf "%sERROR:%s Failed to set PHP version for %s\n" "$RED" "$COLOROFF" "$DOMAIN"
+            else
+                printf "%sINFO:%s PHP version for %s set to %s\n" "$GREEN" "$COLOROFF" "$DOMAIN" "$HESTIA_PHP_VERSION"
+            fi
+        else
+            printf "%sWARNING:%s PHP version %s is not installed on HestiaCP.\n" "$YELLOW" "$COLOROFF" "$HESTIA_PHP_VERSION"
+            printf "Please install it before trying to set it for a domain.\n"
+        fi
+    else
+        printf "%sWARNING:%s Configuration file %s not found.\n" "$YELLOW" "$COLOROFF" "$CONF_FILE"
+    fi
+}
+
 start_domain
+
 quota_convert() {
 BYTES=$1
 if [[ $BYTES == 0 ]] || [[ $BYTES == -1 ]] || [[ $BYTES == unlimited ]]; then
