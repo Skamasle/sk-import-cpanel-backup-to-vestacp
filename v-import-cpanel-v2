@@ -460,7 +460,7 @@ for FOLDER in *; do
 				find  /home/$NEW_USER/mail/$FOLDER/ -type f -exec chmod 660 {} \;
 				find  /home/$NEW_USER/mail/$FOLDER/ -type d -exec chmod 700 {} \;
 				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$FOLDER/
-                if [[ $FIND_GZIPED_MAILS == yes ]]; then
+                		if [[ $FIND_GZIPED_MAILS == yes ]]; then
 				    # Decompress gzipped emails
 				    DECOMPRESSED_COUNT=0
 				    #TODO Change bucle FOR for while, FOR cant process more than 65k files
