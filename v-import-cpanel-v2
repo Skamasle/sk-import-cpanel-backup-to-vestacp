@@ -11,15 +11,14 @@
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-
-# Not all need this, but if needed enable here, 
-# For NOW disabled by default too slow option in big mail accounts
-# Function need be rebuilded
 VERSION=2.0.3
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
     exit
 fi
+# Not all need this, but if needed enable here, 
+# For NOW disabled by default too slow option in big mail accounts
+# Function need be rebuilded
 FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
