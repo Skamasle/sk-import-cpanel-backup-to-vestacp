@@ -2,7 +2,7 @@
 # Import Backup From Centos Web Panel
 # TODO:
 # Restore CRONs and some tests
-VERSION=0.4-BETA
+VERSION=0.5-BETA
 
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
@@ -103,10 +103,14 @@ if [[ ! -z  contentBackup.json ]]; then
     MYSQL_DATABASES_JSON=$(cat contentBackup.json)
     MYSQL_DATABASES_JSON=$(echo $MYSQL_DATABASES_JSON | jq -r '.mysql[]')
 fi
-if [[ $MYSQL_DATABASES_JSON != CHECK ]]; then 
+# Set NEW_USER based on the second argument or from the database JSON if available
+if [[ -n "$2" ]]; then
+    NEW_USER=$2
+elif [[ $MYSQL_DATABASES_JSON != CHECK ]]; then
     NEW_USER=$(echo $MYSQL_DATABASES_JSON | tr '_' ' ' | awk '{ print $1 }')
 else
-    NEW_USER=$2
+    printf "%sERROR:%s No user specified and no databases found to infer user from.\n" "$RED" "$COLOROFF"
+    exit 1
 fi
 printf "%sINFO:%s Get User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 CHECK_SYSUSER=$(cut -f 1 -d : /etc/passwd | grep "^$NEW_USER$")
