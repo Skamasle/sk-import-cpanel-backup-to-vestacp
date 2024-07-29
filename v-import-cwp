@@ -22,10 +22,8 @@ YELLOW=$(tput setaf 3)
 COLOROFF=$(tput sgr0)
 
 if [ $# -lt 1 ]; then
-	echo "usage: bash $0 cpanel-backup.tar.gz"
-	echo "or"
-	echo "usage: bash $0 cpanel-backup.tar.gz ALL # Default opción is ALL can be omited "
-    echo "usage: bash $0 cpanel-backup.tar.gz MAIL DB DOMAIN CRON MX"
+	printf "USAGE: bash $0 cwp-backup.tar.gz\n"
+	printf "Arguments can be USER if you not have databases in your backup\n\n"
 	exit 1
 fi
 
