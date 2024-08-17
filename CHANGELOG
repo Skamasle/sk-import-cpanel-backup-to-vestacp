@@ -1,4 +1,8 @@
 v-import-cpanel 
+2.0.5
+- Avoid warnings when quota or other files not exists
+2.0.4
+- Minor Fixes
 
 2.0.3
 - Fix mail account permisions after restore ( dirs comes with 751, hestia need 700, files fixed to 660)
