@@ -11,14 +11,15 @@
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-VERSION=2.0.3
+
+# Not all need this, but if needed enable here, 
+# For NOW disabled by default too slow option in big mail accounts
+# Function need be rebuilded
+VERSION=2.0.5
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
     exit
 fi
-# Not all need this, but if needed enable here, 
-# For NOW disabled by default too slow option in big mail accounts
-# Function need be rebuilded
 FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
@@ -126,7 +127,7 @@ if ! file "$CPANEL_BACKUP" | grep -q -c "gzip compressed data,"; then
 	exit 3
 fi
 
-printf "%sINFO:%s OK - Gzipped File Detected,  Initiating Extraction::\n" "$GREEN" "$COLOROFF"
+printf "%sINFO:%s OK - Gzipped File Detected, Initiating Extraction:\n" "$GREEN" "$COLOROFF"
 
 pv "$CPANEL_BACKUP" |  tar xz  -C "$TMPDIR"
 
@@ -283,8 +284,12 @@ cat addons | while read ADDON_DOMAINS ADDON_SUB; do
     printf "%sINFO:%s Converting default subdomain: %s in domain: %s\n" "$GREEN" "$COLOROFF" "$ADDON_SUB"  "$ADDON_DOMAINS"
 	sed -i -e "s/$ADDON_SUB/$ADDON_DOMAINS/g" hst_sds
 	sed -i -e "s/$ADDON_SUB/$ADDON_DOMAINS/g" hst_sds2
-	mv userdata/$ADDON_SUB userdata/${ADDON_DOMAINS}
-	mv apache_tls/$ADDON_SUB apache_tls/${ADDON_DOMAINS}
+	if [[ -e userdata/$ADDON_SUB ]]; then
+	    mv userdata/$ADDON_SUB userdata/${ADDON_DOMAINS}
+	fi
+	if [[ -e apache_tls/$ADDON_SUB  ]]; then
+	    mv apache_tls/$ADDON_SUB apache_tls/${ADDON_DOMAINS}
+	fi
 done
 sed -i 's/public_html/public@html/g; s/_/./g; s/public@html/public_html/g; s/=/ /g' hst_sds2
 
@@ -360,7 +365,7 @@ if [ -n "$CPANEL_PHP_VERSION" ]; then
 	fi
 else
 	printf "%sWARNING:%s Unable to detect PHP version used on old server\n" "$YELLOW" "$COLOROFF"
-	printf "%sWARNING:%s Please check you old PHP version and set the PHP version in domain settings\n" "$YELLOW" "$COLOROFF"
+	printf "%sWARNING:%s Please check PHP version in your old server and set the correct PHP manually.\n" "$YELLOW" "$COLOROFF"
     printf "%sWARNING:%s The restoration will continue but the website may not work as expected\n" "$YELLOW" "$COLOROFF"
 
 fi
@@ -446,9 +451,12 @@ for FOLDER in *; do
 				printf "%sINFO:%s Import mail account: %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
 				# Doesn't really matter but we don't know the unhashed one
 				TMP_PASSWD=$(generate_password)
-				QUOTA=$(sed "s/:/ /g" ../../etc/${FOLDER}/quota |grep -w $MAIL_ACCOUNT | awk '{ print $2 }')
-				quota_convert $QUOTA
-				$BIN/v-add-mail-account $NEW_USER $FOLDER $MAIL_ACCOUNT $TMP_PASSWD $QUOTA
+				#Old backups not have quota file
+				if [[ -e ../../etc/${FOLDER}/quota ]]; then
+				    QUOTA=$(sed "s/:/ /g" ../../etc/${FOLDER}/quota |grep -w $MAIL_ACCOUNT | awk '{ print $2 }')
+				    quota_convert $QUOTA
+				fi
+				$BIN/v-add-mail-account $NEW_USER $FOLDER $MAIL_ACCOUNT $TMP_PASSWD ${QUOTA-unlimited}
 				COUNT="0"
 				rsync -av $MAIL_ACCOUNT /home/$NEW_USER/mail/$FOLDER/ | while read line
 				    do
@@ -456,11 +464,11 @@ for FOLDER in *; do
 				    printf "\r%sINFO:%s Importing: %s mails in %s@%s" "$GREEN" "$COLOROFF" "$COUNT" "$MAIL_ACCOUNT" "$FOLDER"
 				    done
 				printf "\n"
-				printf "\r%sINFO:%s Fix User/Gruop/Perms in %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
+				printf "%sINFO:%s Fix User/Gruop/Perms in %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
 				find  /home/$NEW_USER/mail/$FOLDER/ -type f -exec chmod 660 {} \;
 				find  /home/$NEW_USER/mail/$FOLDER/ -type d -exec chmod 700 {} \;
 				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$FOLDER/
-                		if [[ $FIND_GZIPED_MAILS == yes ]]; then
+                if [[ $FIND_GZIPED_MAILS == yes ]]; then
 				    # Decompress gzipped emails
 				    DECOMPRESSED_COUNT=0
 				    #TODO Change bucle FOR for while, FOR cant process more than 65k files
