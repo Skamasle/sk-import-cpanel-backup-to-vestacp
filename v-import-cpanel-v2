@@ -7,19 +7,19 @@
 # Based on sk-import-cpanel-backup-to-vestacp
 # Credits: Maks Usmanov (skamasle) and contributors:
 # Thanks to <https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors>
-# Before v2 hestia original:  https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
+# Before v2 thanks all Hestia Devs who improve:  https://github.com/hestiacp/hestiacp/blob/main/bin/v-import-cpanel
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-
-# Not all need this, but if needed enable here, 
-# For NOW disabled by default too slow option in big mail accounts
-# Function need be rebuilded
 VERSION=2.0.5
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
     exit
 fi
+
+# Not all need FIND_GZIPED_MAILS, but if needed enable here, 
+# For NOW disabled by default, too slow option in big mail accounts
+# Function need be rebuilded
 FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
