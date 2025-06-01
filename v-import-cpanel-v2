@@ -1,4 +1,4 @@
-#!/bin/bash
+grep#!/bin/bash
 # info: Import Cpanel backup to a new user
 # options: BACKUP [ALL] [DB] [DOMAIN] [CRON] [MAIL] [MX] [NO-CHECK-USER] [RESTORE-IN-USER=user]
 #
@@ -11,7 +11,7 @@
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-VERSION=2.0.5
+VERSION=2.0.6
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
     exit
@@ -142,7 +142,7 @@ fi
 cd $TMPDIR/*
 if [[ $CHANGE_CP_USER == yes ]]; then
     MAIN_DOMAIN1=$(grep main_domain userdata/main | cut -d " " -f2)
-    CP_USER=$(grep "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
+    CP_USER=$(grep -w "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
     printf "%sWARNING:%s You select change user, cpanel backup user is: >> %s <<  will be imported in >> %s <<\n" "$YELLOW" "$COLOROFF" "$CP_USER" "$NEW_USER"
     #Convert backup prefix
     sed -i "s/user: $CP_USER/user: $NEW_USER/" userdata/*
