@@ -1,4 +1,6 @@
 v-import-cpanel 
+2.0.6
+- Fix find cpanel https://github.com/hestiacp/hestiacp/issues/4997
 2.0.5
 - Avoid warnings when quota or other files not exists
 2.0.4
