@@ -1,4 +1,4 @@
-grep#!/bin/bash
+#!/bin/bash
 # info: Import Cpanel backup to a new user
 # options: BACKUP [ALL] [DB] [DOMAIN] [CRON] [MAIL] [MX] [NO-CHECK-USER] [RESTORE-IN-USER=user]
 #
@@ -11,15 +11,11 @@ grep#!/bin/bash
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-VERSION=2.0.6
+VERSION=2.0.7
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
     exit
 fi
-
-# Not all need FIND_GZIPED_MAILS, but if needed enable here, 
-# For NOW disabled by default, too slow option in big mail accounts
-# Function need be rebuilded
 FIND_GZIPED_MAILS=no 
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
@@ -39,10 +35,17 @@ if [ $# -lt 1 ]; then
 	exit 1
 fi
 
-if [ ! -e /usr/bin/rsync ] || [ ! -e /usr/bin/file ]; then
-    printf "%sWARNING:%s rsync not installed, try install it\n" "$YELLOW" "$COLOROFF"
-    printf "%sWARNING:%s This script need: rsync, file" "$YELLOW" "$COLOROFF"
-    printf "%sINFO:%s Run: apt-get install rsync file" "$GREEN" "$COLOROFF"
+REQUIRED_CMDS="rsync file pv jq bc"
+MISSING_CMDS=""
+for cmd in $REQUIRED_CMDS; do
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        MISSING_CMDS="${MISSING_CMDS} ${cmd}"
+    fi
+done
+
+if [ -n "$MISSING_CMDS" ]; then
+    printf "%sWARNING:%s Missing required commands:%s\n" "$YELLOW" "$COLOROFF" "$MISSING_CMDS"
+    printf "%sINFO:%s Install them before running the import. Example: apt-get install%s\n" "$GREEN" "$COLOROFF" "$MISSING_CMDS"
     exit 3
 fi
 NO_CHECK_USER=""
@@ -65,12 +68,12 @@ done
 
 if [ -f "$1" ]; then
 	CPANEL_BACKUP="$1"
+else
+	printf "%sWARNING:%s File does not exists: %s\n" "$YELLOW" "$COLOROFF" "$1"
+	exit 1
 fi
 if [ -z "$BACKUP_TEMP" ]; then
 	BACKUP_TEMP=$BACKUP
-else
-	printf "%sWARNING:%s File does not exists\n" "$YELLOW" "$COLOROFF"
-	exit 1
 fi
 # Lets check if have space in home to restore all
 BACKUP_SIZE=$(stat -c %s "$CPANEL_BACKUP")
@@ -261,7 +264,7 @@ cat uni_u_db | while read db userdb; do
 	grep -w $userdb user_password_db | while read user end_user_pass; do
 		if [ "$userdb" == "$user" ] && [ "$userdb" != "$NEW_USER" ]; then
 			printf "DB='%s' DBUSER='%s' MD5='%s' HOST='localhost' TYPE='mysql' CHARSET='UTF8' U_DISK='0' SUSPENDED='no' TIME='%s' DATE='%s'\n" \
-           "$db" "$userdb" "$end_user_pass" "$time" "$data" >> /usr/local/hestia/data/users/"$NEW_USER"/db.conf
+	           "$db" "$userdb" "$end_user_pass" "$time" "$date" >> /usr/local/hestia/data/users/"$NEW_USER"/db.conf
 		fi
 	done
 done
@@ -298,7 +301,7 @@ function get_domain_path() {
 		printf "%sINFO:%s Import $CP_DOMAIN\n" "$GREEN" "$COLOROFF"
 		if [ -e userdata/$CP_DOMAIN ]; then
             is_there "$CP_DOMAIN" "DOMAIN" "$NEW_USER"
-            if [[ IS_THERE != yes ]]; then  
+	            if [[ $IS_THERE != yes ]]; then  
 			    $BIN/v-add-domain "$NEW_USER" "$CP_DOMAIN"
     			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/index.html
     			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/robots.txt
@@ -322,7 +325,7 @@ function get_domain_path() {
 get_domain_path < hst_sds2
 
 is_there "$MAIN_DOMAIN1" "DOMAIN" "$NEW_USER"
-if [[ IS_THERE != yes ]]; then
+if [[ $IS_THERE != yes ]]; then
     $BIN/v-add-domain $NEW_USER $MAIN_DOMAIN1
 
 # need it for restore main domain
