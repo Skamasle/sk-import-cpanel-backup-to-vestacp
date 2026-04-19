@@ -11,7 +11,7 @@
 # Known issue
 # - It doesn't update DKIM
 # - Restore mail forwarders - Pending
-VERSION=2.0.7
+VERSION=2.0.8
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
     exit
@@ -142,7 +142,7 @@ else
 	exit 1
 fi
 
-cd $TMPDIR/*
+cd "$TMPDIR"/*
 if [[ $CHANGE_CP_USER == yes ]]; then
     MAIN_DOMAIN1=$(grep main_domain userdata/main | cut -d " " -f2)
     CP_USER=$(grep -w "user:" userdata/${MAIN_DOMAIN1} | cut -d " " -f2)
@@ -168,7 +168,7 @@ if [[ $CHANGE_CP_USER == yes ]]; then
             -o -name "parameters.php" -o -name "settings.inc.php" \) \
     | while read CONFIG_FILE
     do
-        sed -i "s/${CP_USER}_/${NEW_USER}_/g" $CONFIG_FILE
+        sed -i "s/${CP_USER}_/${NEW_USER}_/g" "$CONFIG_FILE"
     done
 # From here script works normal
 fi
@@ -223,7 +223,7 @@ if [[ $NO_CREATE_USER != yes ]]; then
     update_user_value "$NEW_USER" 'MD5' "$(cat shadow)"
     $BIN/v-rebuild-user "$NEW_USER"
 fi
-USER_IP=$($BIN/v-list-user-ips $NEW_USER plain | awk '{ print $1 }')
+USER_IP=$($BIN/v-list-user-ips "$NEW_USER" plain | awk '{ print $1 }')
 restore_databases(){
 # Restore databases
 mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
@@ -296,55 +296,62 @@ cat addons | while read ADDON_DOMAINS ADDON_SUB; do
 done
 sed -i 's/public_html/public@html/g; s/_/./g; s/public@html/public_html/g; s/=/ /g' hst_sds2
 
-function get_domain_path() {
-	while read CP_DOMAIN path; do
-		printf "%sINFO:%s Import $CP_DOMAIN\n" "$GREEN" "$COLOROFF"
-		if [ -e userdata/$CP_DOMAIN ]; then
-            is_there "$CP_DOMAIN" "DOMAIN" "$NEW_USER"
-	            if [[ $IS_THERE != yes ]]; then  
-			    $BIN/v-add-domain "$NEW_USER" "$CP_DOMAIN"
-    			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/index.html
-    			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/robots.txt
-    			SYNC_COUNT=0
-    			rsync -av homedir/$path/ /home/$NEW_USER/web/$CP_DOMAIN/public_html 2>&1 \
-    				| while read file_dm; do
-    					SYNC_COUNT=$(($SYNC_COUNT + 1))
-    					printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
-    				done
-    		    printf "\n"
-    			chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$CP_DOMAIN/public_html
-    			chown $NEW_USER:www-data /home/$NEW_USER/web/$CP_DOMAIN/public_html
-    			chmod 751 /home/$NEW_USER/web/$CP_DOMAIN/public_html
-    			echo "$CP_DOMAIN" >> exclude_path
-    		fi
-    	else
-    	    printf "%sWARNING:%s Domain %s already added, skip..\n" "$YELLOW" "$COLOROFF" "$CP_DOMAIN"
-    	fi
-	done
-}
+	function get_domain_path() {
+		while read CP_DOMAIN path; do
+			printf "%sINFO:%s Import $CP_DOMAIN\n" "$GREEN" "$COLOROFF"
+			if [ -e userdata/$CP_DOMAIN ]; then
+	            is_there "$CP_DOMAIN" "DOMAIN" "$NEW_USER"
+	            if [[ $IS_THERE != yes ]]; then
+				    $BIN/v-add-domain "$NEW_USER" "$CP_DOMAIN"
+				    if [ "$?" -ne 0 ]; then
+				    	printf "%sERROR:%s Unable to create domain %s, skipping content import.\n" "$RED" "$COLOROFF" "$CP_DOMAIN"
+				    	continue
+				    fi
+	    			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/index.html
+	    			rm -f /home/$NEW_USER/web/$CP_DOMAIN/public_html/robots.txt
+	    			SYNC_COUNT=0
+	    			rsync -av "homedir/$path/" "/home/$NEW_USER/web/$CP_DOMAIN/public_html" 2>&1 \
+	    				| while read file_dm; do
+	    					SYNC_COUNT=$(($SYNC_COUNT + 1))
+	    					printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
+	    				done
+	    		    printf "\n"
+	    			chown "$NEW_USER:$NEW_USER" -R "/home/$NEW_USER/web/$CP_DOMAIN/public_html"
+	    			chown "$NEW_USER:www-data" "/home/$NEW_USER/web/$CP_DOMAIN/public_html"
+	    			chmod 751 "/home/$NEW_USER/web/$CP_DOMAIN/public_html"
+	    			echo "$CP_DOMAIN" >> exclude_path
+	    		fi
+	    	else
+	    	    printf "%sWARNING:%s Domain %s already added, skip..\n" "$YELLOW" "$COLOROFF" "$CP_DOMAIN"
+	    	fi
+		done
+	}
 get_domain_path < hst_sds2
 
 is_there "$MAIN_DOMAIN1" "DOMAIN" "$NEW_USER"
 if [[ $IS_THERE != yes ]]; then
-    $BIN/v-add-domain $NEW_USER $MAIN_DOMAIN1
+    $BIN/v-add-domain "$NEW_USER" "$MAIN_DOMAIN1"
+    if [ "$?" -ne 0 ]; then
+    	printf "%sERROR:%s Unable to create main domain %s, skipping content import.\n" "$RED" "$COLOROFF" "$MAIN_DOMAIN1"
+    else
+    # need it for restore main domain
+        if [ ! -e exclude_path ]; then
+	        touch exclude_path
+        fi
+        printf "%sINFO:%s Importing main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
+        rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/index.html
+        rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/robots.txt
 
-# need it for restore main domain
-    if [ ! -e exclude_path ]; then
-	    touch exclude_path
+        rsync -av --exclude-from='exclude_path' "homedir/public_html/" "/home/$NEW_USER/web/$MAIN_DOMAIN1/public_html" 2>&1 \
+        	| while read file_dm; do
+	        	SYNC_COUNT=$(($SYNC_COUNT + 1))
+                printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
+        	done
+        printf "\n"
+        chown "$NEW_USER:$NEW_USER" -R "/home/$NEW_USER/web/$MAIN_DOMAIN1/public_html"
+        chown "$NEW_USER:www-data" "/home/$NEW_USER/web/$MAIN_DOMAIN1/public_html"
+        chmod 751 "/home/$NEW_USER/web/$MAIN_DOMAIN1/public_html"
     fi
-    printf "%sINFO:%s Importing main domain: %s \n" "$GREEN" "$COLOROFF" "$MAIN_DOMAIN1"
-    rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/index.html
-    rm -f /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html/robots.txt
-
-    rsync -av --exclude-from='exclude_path' homedir/public_html/ /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html 2>&1 \
-    	| while read file_dm; do
-	    	SYNC_COUNT=$(($SYNC_COUNT + 1))
-            printf "\r%sINFO:%s Importing -- %s files"  "$GREEN" "$COLOROFF" "$SYNC_COUNT "
-    	done
-    printf "\n"
-    chown $NEW_USER:$NEW_USER -R /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
-    chown $NEW_USER:www-data /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
-    chmod 751 /home/$NEW_USER/web/$MAIN_DOMAIN1/public_html
 fi
 ####### Set Domain PHP version
 PHP_VERSION_LINE=$(grep -r "phpversion:" userdata/$MAIN_DOMAIN1)
@@ -391,11 +398,11 @@ fi
 # Try SSL
 printf "%sINFO:%s Copy SSL files. \n" "$GREEN" "$COLOROFF"
 
-for SSL_DOMAIN in apache_tls/*
-do
-    DOMAIN=$(echo $SSL_DOMAIN | awk -F '/' '{ print $2 }')
-    mkdir -p apache_tls/ssl/$DOMAIN
-    awk -v RS="-----BEGIN CERTIFICATE-----" -v SSL_DOMAIN="$DOMAIN"  '
+	for SSL_DOMAIN in apache_tls/*
+	do
+	    DOMAIN=$(echo "$SSL_DOMAIN" | awk -F '/' '{ print $2 }')
+	    mkdir -p "apache_tls/ssl/$DOMAIN"
+	    awk -v RS="-----BEGIN CERTIFICATE-----" -v SSL_DOMAIN="$DOMAIN"  '
         NR==1 {
             cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".key";
             print $0 > cert_file;
@@ -405,13 +412,20 @@ do
             cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".crt";
             print "-----BEGIN CERTIFICATE-----" $0 > cert_file;
         } 
-        NR>2 {
-            block_count++;
-            cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".ca";
-            print "-----BEGIN CERTIFICATE-----" $0 > cert_file;
-        } ' $SSL_DOMAIN
-        $BIN/v-add-web-domain-ssl $NEW_USER $DOMAIN apache_tls/ssl/${DOMAIN}/
-done
+	        NR>2 {
+	            block_count++;
+	            cert_file = "apache_tls/ssl/" SSL_DOMAIN "/" SSL_DOMAIN ".ca";
+	            print "-----BEGIN CERTIFICATE-----" $0 > cert_file;
+	        } ' "$SSL_DOMAIN"
+	    if [ ! -s "apache_tls/ssl/${DOMAIN}/${DOMAIN}.key" ] || [ ! -s "apache_tls/ssl/${DOMAIN}/${DOMAIN}.crt" ]; then
+	    	printf "%sWARNING:%s SSL files for %s are incomplete, skipping SSL import.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+	    	continue
+	    fi
+	    $BIN/v-add-web-domain-ssl "$NEW_USER" "$DOMAIN" "apache_tls/ssl/${DOMAIN}/"
+	    if [ "$?" -ne 0 ]; then
+	    	printf "%sWARNING:%s Failed to import SSL for %s.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+	    fi
+	done
 
 }
 
@@ -427,7 +441,7 @@ fi
 }
 restore_mail() {
 printf "\n%sINFO:%s Start Importing Mails\n" "$GREEN" "$COLOROFF"
-cd homedir/mail
+cd "homedir/mail"
 # We can convert this but need some backups with mdbox for tests.
 if [ -e "mailbox_format.cpanel" ] && ! grep -q 'maildir' "mailbox_format.cpanel";then
     printf "%s¡WARNING!:%s HestiaCP requiere mails be stored in maildir format, we detect mdbox, you may need convert it manually\n"  "$YELLOW" "$COLOROFF" 
@@ -436,13 +450,17 @@ fi
 for FOLDER in *; do
 	if [ -d "$FOLDER" ]; then
 		if [[ "$FOLDER" != "cur" && "$FOLDER" != "new" && "$FOLDER" != "tmp" ]]; then
-			printf "%sINFO:%s Importing mails for domain: %s \n" "$GREEN" "$COLOROFF" $FOLDER
-            # This is needed as parked domains have emails but not added 
-            if ! $BIN/v-list-mail-domains $NEW_USER plain | awk '{ print $1 }' |grep -q "^${FOLDER}$"; then
-	        	printf "%sINFO:%s Found parked domain %s adding as mail domain in Hestia\n" "$GREEN" "$COLOROFF" "$FOLDER"
-	            $BIN/v-add-mail-domain $NEW_USER $FOLDER	    
-	        fi
-			cd $FOLDER
+				printf "%sINFO:%s Importing mails for domain: %s \n" "$GREEN" "$COLOROFF" "$FOLDER"
+	            # This is needed as parked domains have emails but not added 
+		            if ! $BIN/v-list-mail-domains "$NEW_USER" plain | awk '{ print $1 }' |grep -q "^${FOLDER}$"; then
+		        	printf "%sINFO:%s Found parked domain %s adding as mail domain in Hestia\n" "$GREEN" "$COLOROFF" "$FOLDER"
+			            $BIN/v-add-mail-domain "$NEW_USER" "$FOLDER"
+		            if [ "$?" -ne 0 ]; then
+		            	printf "%sWARNING:%s Failed to add mail domain %s, skipping its mailboxes.\n" "$YELLOW" "$COLOROFF" "$FOLDER"
+		            	continue
+		            fi
+		        fi
+					cd "$FOLDER"
 			MAIL_ACCOUNT_COUNT=$(find . -maxdepth 1 -mindepth 1 -type d \( ! -name cur ! -name new ! -name tmp \) | wc -l)
 			if [ "$MAIL_ACCOUNT_COUNT" -eq 0 ]; then
 				printf "%sINFO:%s No mail accounts to import for domain%s\n" "$GREEN" "$COLOROFF" "$FOLDER"
@@ -455,22 +473,26 @@ for FOLDER in *; do
 				# Doesn't really matter but we don't know the unhashed one
 				TMP_PASSWD=$(generate_password)
 				#Old backups not have quota file
-				if [[ -e ../../etc/${FOLDER}/quota ]]; then
-				    QUOTA=$(sed "s/:/ /g" ../../etc/${FOLDER}/quota |grep -w $MAIL_ACCOUNT | awk '{ print $2 }')
-				    quota_convert $QUOTA
-				fi
-				$BIN/v-add-mail-account $NEW_USER $FOLDER $MAIL_ACCOUNT $TMP_PASSWD ${QUOTA-unlimited}
-				COUNT="0"
-				rsync -av $MAIL_ACCOUNT /home/$NEW_USER/mail/$FOLDER/ | while read line
+					if [[ -e ../../etc/${FOLDER}/quota ]]; then
+						    QUOTA=$(sed "s/:/ /g" "../../etc/${FOLDER}/quota" | grep -w "$MAIL_ACCOUNT" | awk '{ print $2 }')
+						    quota_convert "$QUOTA"
+						fi
+						$BIN/v-add-mail-account "$NEW_USER" "$FOLDER" "$MAIL_ACCOUNT" "$TMP_PASSWD" "${QUOTA-unlimited}"
+					if [ "$?" -ne 0 ]; then
+						printf "%sWARNING:%s Failed to add mail account %s@%s, skipping mailbox import.\n" "$YELLOW" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
+						continue
+					fi
+					COUNT="0"
+						rsync -av "$MAIL_ACCOUNT" "/home/$NEW_USER/mail/$FOLDER/" | while read line
 				    do
 				    ((COUNT++))
 				    printf "\r%sINFO:%s Importing: %s mails in %s@%s" "$GREEN" "$COLOROFF" "$COUNT" "$MAIL_ACCOUNT" "$FOLDER"
 				    done
 				printf "\n"
 				printf "%sINFO:%s Fix User/Gruop/Perms in %s@%s\n" "$GREEN" "$COLOROFF" "$MAIL_ACCOUNT" "$FOLDER"
-				find  /home/$NEW_USER/mail/$FOLDER/ -type f -exec chmod 660 {} \;
-				find  /home/$NEW_USER/mail/$FOLDER/ -type d -exec chmod 700 {} \;
-				chown -R $NEW_USER:mail /home/$NEW_USER/mail/$FOLDER/
+				find "/home/$NEW_USER/mail/$FOLDER/" -type f -exec chmod 660 {} \;
+				find "/home/$NEW_USER/mail/$FOLDER/" -type d -exec chmod 700 {} \;
+				chown -R "$NEW_USER:mail" "/home/$NEW_USER/mail/$FOLDER/"
                 if [[ $FIND_GZIPED_MAILS == yes ]]; then
 				    # Decompress gzipped emails
 				    DECOMPRESSED_COUNT=0
@@ -515,7 +537,7 @@ for FOLDER in *; do
 					printf "%sWarning:%s Shadow file for %s not found.\n" "$YELLOW" "$COLOROFF" "$FOLDER"
 				fi
 			done
-			cd ..
+				cd ..
 			$BIN/v-rebuild-mail-domain $NEW_USER $FOLDER
 		fi
 	fi
@@ -523,27 +545,46 @@ done
 }
 
 restore_mx() {
-# By default there is no site in a script when $mx is defined
-if [ "$mx" = 'yes' ]; then
-	cd $MAIN_DIR/dnszones
-	for domain in $($BIN/v-list-mail-domains $NEW_USER plain | awk '{ print  $1 }'); do
-		printf "%sINFO:%s Replace MX record for %s \n" "$GREEN" "$COLOROFF" $domain
-		mx_id=$(grep MX $HESTIA/data/users/${NEW_USER}/dns/${domain}.conf | tr "'" " " | cut -d " " -f 2)
-		$BIN/v-delete-dns-record $NEW_USER $domain $mx_id
-		grep MX ${domain}.db | awk '{for(sk=NF;sk>=1;sk--) printf "%s ", $sk;print ""}' | while read value pri ns rest; do
-			if [ "$ns" = "MX" ]; then
-				if [ "$value" == "$sk_mx" ] || [ "$value" == "$sk_mx." ]; then
-					value=mail.$value
+cd "$MAIN_DIR/dnszones"
+	for DOMAIN in $($BIN/v-list-mail-domains "$NEW_USER" plain | awk '{ print  $1 }'); do
+		printf "%sINFO:%s Replace MX record for %s \n" "$GREEN" "$COLOROFF" "$DOMAIN"
+		MX_ID=$(grep MX "$HESTIA/data/users/${NEW_USER}/dns/${DOMAIN}.conf" | tr "'" " " | cut -d " " -f 2)
+		if [ -z "$MX_ID" ]; then
+			printf "%sWARNING:%s No existing MX record found for %s, skipping.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+			continue
+		fi
+		if [ ! -f "${DOMAIN}.db" ]; then
+			printf "%sWARNING:%s DNS zone file %s.db not found, skipping MX restore.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+			continue
+		fi
+		$BIN/v-delete-dns-record "$NEW_USER" "$DOMAIN" "$MX_ID"
+		if [ "$?" -ne 0 ]; then
+			printf "%sWARNING:%s Failed to delete current MX record for %s, skipping.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+			continue
+		fi
+		MX_RESTORED=no
+		while read VALUE PRI NS REST; do
+			if [ "$NS" = "MX" ]; then
+				if [ "$VALUE" == "$DOMAIN" ] || [ "$VALUE" == "$DOMAIN." ]; then
+					VALUE="mail.${DOMAIN}"
 				fi
-				$BIN/v-add-dns-record $NEW_USER $domain @ MX $value $pri
-				if [[ "$?" -ge "1" ]]; then
-					$BIN/v-add-dns-record $NEW_USER $domain @ MX mail.${domain} 0
+					$BIN/v-add-dns-record "$NEW_USER" "$DOMAIN" @ MX "$VALUE" "$PRI"
+				if [ "$?" -ne 0 ]; then
+						$BIN/v-add-dns-record "$NEW_USER" "$DOMAIN" @ MX "mail.${DOMAIN}" 0
+					if [ "$?" -ne 0 ]; then
+						printf "%sWARNING:%s Failed to restore MX for %s.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+						continue
+					fi
+					VALUE="mail.${DOMAIN}"
 				fi
-				printf "%sINFO:%s MX fixed in %s \n " "$GREEN" "$COLOROFF" $sk_mx
+				MX_RESTORED=yes
+				printf "%sINFO:%s MX fixed for %s -> %s\n" "$GREEN" "$COLOROFF" "$DOMAIN" "$VALUE"
 			fi
-		done
+			done < <(grep MX "${DOMAIN}.db" | awk '{for(sk=NF;sk>=1;sk--) printf "%s ", $sk;print ""}')
+		if [[ $MX_RESTORED != yes ]]; then
+			printf "%sWARNING:%s No MX records restored for %s.\n" "$YELLOW" "$COLOROFF" "$DOMAIN"
+		fi
 	done
-fi
 }
 
 ##################
@@ -551,7 +592,7 @@ fi
 restore_cron() {
 printf "\n%sINFO:%s Start Importing Cron Jobs For User: %s\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 CRON_DIR="$MAIN_DIR/cron"
-cd "$CRON_DIR"
+	cd "$CRON_DIR"
 CRON_FILE="${NEW_USER}"
 if [ -f "$CRON_FILE" ] && [ -s "$CRON_FILE" ]; then
 	while IFS= read -r CRON_JOB || [ -n "$CRON_JOB" ]; do
@@ -590,9 +631,12 @@ if [ -f "$CRON_FILE" ] && [ -s "$CRON_FILE" ]; then
             else
                 CMD=$(echo $CMD | sed "s#$EAPHP#$DEFAULT_PHP#")
             fi
-        fi
-		$BIN/v-add-cron-job $NEW_USER "$MIN" "$HOUR" "$DAY" "$MONTH" "$DOW" "$CMD"
-	done < "$CRON_FILE"
+	        fi
+			$BIN/v-add-cron-job $NEW_USER "$MIN" "$HOUR" "$DAY" "$MONTH" "$DOW" "$CMD"
+			if [ "$?" -ne 0 ]; then
+				printf "%sWARNING:%s Failed to import cron job for %s: %s\n" "$YELLOW" "$COLOROFF" "$NEW_USER" "$CRON_JOB"
+			fi
+		done < "$CRON_FILE"
 	printf "%sINFO:%s Cron jobs imported for user %s.\n" "$GREEN" "$COLOROFF" "$NEW_USER"
 else
 	printf "%sINFO:%s No cron jobs file found or it is empty for user %s. \n" "$GREEN" "$COLOROFF" "$NEW_USER"
