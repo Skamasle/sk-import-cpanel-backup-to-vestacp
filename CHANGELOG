@@ -1,4 +1,9 @@
 v-import-cpanel 
+2.0.8
+- Add quotes to important paths
+- Harden error handling for domains, mail accounts, MX, SSL and cron restore
+2.07
+- Fix MX restore logic, replace legacy sk_mx check with imported domain detection
 2.0.6
 - Fix find cpanel https://github.com/hestiacp/hestiacp/issues/4997
 2.0.5
