@@ -2,7 +2,7 @@
 # Import Backup From Centos Web Panel
 # TODO:
 # Restore CRONs and some tests
-VERSION=0.5-BETA
+VERSION=0.6-BETA
 
 if [[ $1 == version ]] || [[ $1 == --version ]]; then
     printf "Version: %s\n" "$VERSION"
@@ -162,7 +162,7 @@ fi
 
 restore_databases(){
 # Restore databases
-mysql -e "SET GLOBAL max_allowed_packet=1073741824;"
+mariadb -e "SET GLOBAL max_allowed_packet=1073741824;"
 sed -i 's/\\//g' mysql/user_grants.sql
 sed -i "s/\`/'/g" mysql/user_grants.sql
 printf "\n%sINFO%s: Start with Databases\n" "$GREEN" "$COLOROFF"
@@ -173,13 +173,13 @@ grep "GRANT" mysql/user_grants.sql | grep -v "USAGE ON" > u_db
 cat u_db | awk -F "'" '{ print $2, $4 }' | sort | uniq > uni_u_db
 # Fix mysql 8 to mariadb problems here:
 sed -i "s/utf8mb4_0900_ai_ci/utf8mb4_unicode_ci/g" mysql/*
-mysql -e "SHOW DATABASES" > server_dbs
+mariadb -e "SHOW DATABASES" > server_dbs
 for db in $MYSQL_DATABASES_JSON; do
 	grep -w $db server_dbs
 	if [ $? == "1" ]; then
 		printf "%sINFO%s: Create and import %s\n" "$GREEN" "$COLOROFF" "${db}"
-        mysql -e "CREATE DATABASE $db"
-		mysql ${db} < mysql/${db}.sql
+        mariadb -e "CREATE DATABASE $db"
+		mariadb ${db} < mysql/${db}.sql
 	else
 		printf "%sERROR%s: Cant import database %s alredy exists in mysql server\n" "$RED" "$COLOROFF" $db 
 	fi
